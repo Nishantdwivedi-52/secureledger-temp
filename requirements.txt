@@ -1,0 +1,11 @@
+neo4j
+pandas
+networkx
+python-louvain
+scikit-learn
+torch
+torch-geometric
+node2vec
+fastapi
+uvicorn
+python-dotenv
