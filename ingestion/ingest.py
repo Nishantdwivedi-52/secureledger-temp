@@ -17,6 +17,7 @@ def get_driver():
 def load_data():
     print("Loading CSV...")
     df = pd.read_csv('../data/HI-Small_Trans.csv')
+    df = pd.read_csv('data/HI-Small_Trans.csv')
     df['Timestamp'] = pd.to_datetime(df['Timestamp'])
     df = df[df['Timestamp'].dt.date <= pd.Timestamp('2022-09-03').date()]
     print(f'Loaded {len(df):,} transactions after filtering to Sep 1-3')
