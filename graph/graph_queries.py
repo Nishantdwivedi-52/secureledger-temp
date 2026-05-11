@@ -340,7 +340,17 @@ def detect_mule_accounts():
             for r in result
         ]
 
-
+def get_circular_flows(limit=10):
+    with driver.session() as s:
+        result = s.run('''
+            MATCH path = (a:Account)-[:TRANSACTION*3..4]->(a)
+            WHERE ALL(r IN relationships(path) WHERE r.is_laundering = 1)
+            RETURN [n IN nodes(path) | n.id] AS cycle,
+                   [r IN relationships(path) | r.amount_paid] AS amounts
+            LIMIT $limit
+        ''', limit=limit)
+        return [{'cycle': r['cycle'], 'amounts': r['amounts']} for r in result]
+    
 # ------------------------------------------------
 # MAIN TEST
 # ------------------------------------------------
@@ -355,3 +365,9 @@ if __name__ == "__main__":
 
     print("\n=== TOP RISKY ACCOUNTS ===")
     print(get_top_risky_accounts(5))
+
+    print("\n=== CIRCULAR FLOWS ===")
+    print(get_circular_flows(5))
+
+    print("\n=== MULE ACCOUNTS ===")
+    print(detect_mule_accounts())
