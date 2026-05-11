@@ -16,3 +16,4 @@ python-louvain
 tqdm
 jupyter
 ipykernel
+torch-geometric
