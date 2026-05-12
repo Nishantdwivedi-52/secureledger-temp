@@ -37,71 +37,49 @@ def test_connection():
 # ------------------------------------------------
 
 def get_dashboard_stats():
-
-    query = """
-
-    MATCH (a:Account)
-
-    RETURN
-
-    count(a) AS total_accounts,
-
-    count(
-        CASE
-        WHEN a.risk_score > 0.8
-        THEN 1
-        END
-    ) AS high_risk_accounts,
-
-    avg(a.risk_score) AS avg_risk
-
-    """
-
     with driver.session() as session:
-
+        query = """
+        MATCH (a:Account)
+        RETURN 
+            count(a) as total_accounts,
+            count(CASE WHEN a.anomaly_score > 0.7 THEN 1 END) as high_risk_accounts,
+            avg(a.anomaly_score) as avg_risk
+        """
         result = session.run(query).single()
-
-        return dict(result)
+        
+        # If the database is empty, return zeros instead of None/null
+        return {
+            "total_accounts": result["total_accounts"] or 0,
+            "high_risk_accounts": result["high_risk_accounts"] or 0,
+            "avg_risk": round(result["avg_risk"], 4) if result["avg_risk"] else 0
+        }
 
 
 # ------------------------------------------------
 # TOP RISKY ACCOUNTS
 # ------------------------------------------------
 
-def get_top_risky_accounts(limit=20):
-
-    query = """
-
-    MATCH (a:Account)
-
-    WHERE a.risk_score IS NOT NULL
-
-    RETURN
-
-    a.id AS account_id,
-
-    a.risk_score AS risk_score,
-
-    a.pr_score AS pagerank,
-
-    a.betweenness_score AS betweenness,
-
-    a.community_id AS community_id
-
-    ORDER BY a.risk_score DESC
-
-    LIMIT $limit
-
-    """
-
+def get_top_risky_accounts(limit=20, search_id=None):
     with driver.session() as session:
-
-        result = session.run(
-            query,
-            limit=limit
-        )
-
-        return [dict(r) for r in result]
+        if search_id:
+            # Search for a specific ID across the whole database
+            query = """
+            MATCH (a:Account {id: $search_id})
+            RETURN a.id AS id, a.anomaly_score AS anomaly_score
+            """
+            result = session.run(query, search_id=search_id)
+        else:
+            # Default: show the most suspicious ones
+            query = """
+            MATCH (a:Account)
+            WHERE a.anomaly_score IS NOT NULL
+            RETURN a.id AS id, a.anomaly_score AS anomaly_score
+            ORDER BY a.anomaly_score DESC
+            LIMIT $limit
+            """
+            result = session.run(query, limit=limit)
+        
+        return [dict(record) for record in result]
 
 
 # ------------------------------------------------
