@@ -2,10 +2,10 @@
 
 Best Threshold : 0.10
 
-Precision : 0.0019
-Recall    : 0.7039
-F1 Score  : 0.0039
+Precision : 0.0021
+Recall    : 0.6908
+F1 Score  : 0.0041
 
 Confusion Matrix:
-[[47206 54795]
- [   45   107]]
+[[51109 50892]
+ [   47   105]]

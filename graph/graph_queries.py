@@ -332,7 +332,246 @@ def get_circular_flows(limit=10):
 # ------------------------------------------------
 # MAIN TEST
 # ------------------------------------------------
+# ------------------------------------------------
+# FRAUD RING GRAPH VISUALIZATION
+# ------------------------------------------------
 
+def get_ring_graph(limit=120):
+
+    query = """
+
+    MATCH
+
+    (src:Account)
+
+    -[t:TRANSACTION]->
+
+    (dst:Account)
+
+    WHERE
+
+    (src.ring_id IS NOT NULL
+
+    OR
+
+    dst.ring_id IS NOT NULL
+    )
+    AND
+    (src.fraud_prob > 0.5
+    OR
+    dst.fraud_prob > 0.5
+    )
+
+    RETURN
+
+    src,
+    dst,
+    t
+
+    LIMIT $limit
+
+    """
+
+    with driver.session() as session:
+
+        results = session.run(
+            query,
+            limit=limit
+        )
+
+        nodes = {}
+
+        links = []
+
+        for record in results:
+
+            src = record["src"]
+
+            dst = record["dst"]
+
+            tx = record["t"]
+
+            # --------------------------------
+            # SOURCE NODE
+            # --------------------------------
+
+            nodes[src.id] = {
+
+                "id": src["id"],
+
+                "fraud_prob":
+
+                src.get(
+                    "fraud_prob",
+                    0
+                ),
+
+                "ring_id":
+
+                src.get(
+                    "ring_id",
+                    None
+                ),
+
+                "is_mastermind":
+
+                src.get(
+                    "is_mastermind",
+                    False
+                )
+            }
+
+            # --------------------------------
+            # DEST NODE
+            # --------------------------------
+
+            nodes[dst.id] = {
+
+                "id": dst["id"],
+
+                "fraud_prob":
+
+                dst.get(
+                    "fraud_prob",
+                    0
+                ),
+
+                "ring_id":
+
+                dst.get(
+                    "ring_id",
+                    None
+                ),
+
+                "is_mastermind":
+
+                dst.get(
+                    "is_mastermind",
+                    False
+                )
+            }
+
+            # --------------------------------
+            # EDGE
+            # --------------------------------
+
+            links.append({
+
+                "source": src["id"],
+
+                "target": dst["id"],
+
+                "amount":
+
+                tx.get(
+                    "amount_paid",
+                    1
+                )
+            })
+
+        return {
+
+            "nodes": list(nodes.values()),
+
+            "links": links
+        }
+    
+# ------------------------------------------------
+# RING STATISTICS
+# ------------------------------------------------
+
+def get_ring_stats():
+
+    query = """
+
+    MATCH (a:Account)
+
+    WHERE a.ring_id IS NOT NULL
+
+    RETURN
+
+    count(DISTINCT a.ring_id) AS total_rings,
+
+    count(
+        CASE
+        WHEN a.is_mastermind = true
+        THEN 1
+        END
+    ) AS masterminds,
+
+    count(a) AS suspicious_accounts
+
+    """
+
+    with driver.session() as session:
+
+        result = session.run(query).single()
+
+        return {
+
+            "total_rings":
+            result["total_rings"],
+
+            "masterminds":
+            result["masterminds"],
+
+            "suspicious_accounts":
+            result["suspicious_accounts"]
+        }
+
+# ------------------------------------------------
+# TOP MASTERMINDS
+# ------------------------------------------------
+
+def get_top_masterminds(limit=20):
+
+    query = """
+
+    MATCH (a:Account)
+
+    WHERE a.is_mastermind = true
+
+    RETURN
+
+    a.id AS id,
+
+    a.ring_id AS ring_id,
+
+    a.mastermind_score AS mastermind_score,
+
+    a.fraud_prob AS fraud_prob
+
+    ORDER BY a.mastermind_score DESC
+
+    LIMIT $limit
+
+    """
+
+    with driver.session() as session:
+
+        results = session.run(
+            query,
+            limit=limit
+        )
+
+        return [
+
+            {
+                "id": r["id"],
+
+                "ring_id": r["ring_id"],
+
+                "mastermind_score":
+
+                r["mastermind_score"],
+
+                "fraud_prob":
+
+                r["fraud_prob"]
+            }
+
+            for r in results
+        ]
 if __name__ == "__main__":
 
     print("\n=== CONNECTION TEST ===")
