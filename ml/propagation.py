@@ -1,239 +1,63 @@
-from neo4j import GraphDatabase
+"""
+ml/propagation.py
+Stage C — Fund Flow Propagation (core innovation)
 
-# ------------------------------------------------
-# NEO4J CONNECTION
-# ------------------------------------------------
+Risk spreads through transaction edges:
+  propagated_risk[v] += decay * max(fraud_prob[u] for u → v)
 
-URI = "bolt://localhost:7687"
+This captures indirect complicity invisible to node-only detectors:
+if account A sends funds to suspicious account B, A's
+propagated_risk rises — even if A's own local features appear benign.
 
-AUTH = (
-    "neo4j",
-    "secureledger123"
-)
+Hyperparameters:
+  decay      = 0.5   (risk halves with each hop)
+  iterations = 3     (3-hop neighbourhood captured)
+"""
 
-driver = GraphDatabase.driver(
-    URI,
-    auth=AUTH
-)
+import os
 
-# ------------------------------------------------
-# PROPAGATION ENGINE
-# ------------------------------------------------
+from dotenv import load_dotenv
 
-def propagate(
-    iterations=3,
-    decay=0.5
-):
+from ingest import load_graph, save_graph
 
-    print("\n=== STARTING RISK PROPAGATION ===\n")
+load_dotenv()
 
-    # -----------------------------------------
-    # LOAD ACCOUNT SCORES
-    # -----------------------------------------
+GRAPH_PATH  = os.getenv("GRAPH_PATH", "ml/graph.gpickle")
+DECAY       = float(os.getenv("PROPAGATION_DECAY", 0.5))
+ITERATIONS  = int(os.getenv("PROPAGATION_ITERS", 3))
 
-    with driver.session() as session:
 
-        accounts = session.run("""
+def propagate(graph_path: str, decay: float = 0.5, iterations: int = 3) -> None:
+    print(f"Loading graph from {graph_path} …")
+    G = load_graph(graph_path)
 
-            MATCH (a:Account)
+    # Seed propagated_risk from anomaly_score
+    for node in G.nodes():
+        G.nodes[node]["propagated_risk"] = G.nodes[node].get("anomaly_score", 0.0)
 
-            RETURN
-
-            a.id AS id,
-
-            coalesce(
-                a.anomaly_score,
-                0
-            ) AS score
-
-        """).data()
-
-        # Convert to dictionary
-
-        scores = {
-
-            acc["id"]: acc["score"]
-
-            for acc in accounts
-        }
-
-        print(
-            f"Loaded {len(scores)} accounts"
-        )
-
-        # -----------------------------------------
-        # LOAD TRANSACTIONS
-        # -----------------------------------------
-
-        edges = session.run("""
-
-            MATCH
-
-            (src:Account)
-
-            -[t:TRANSACTION]->
-
-            (dst:Account)
-
-            RETURN
-
-            src.id AS src,
-
-            dst.id AS dst,
-
-            t.amount_paid AS amount
-
-        """).data()
-
-        print(
-            f"Loaded {len(edges)} transactions"
-        )
-
-    # -----------------------------------------
-    # BUILD GRAPH ADJACENCY
-    # -----------------------------------------
-
-    adjacency = {}
-
-    for edge in edges:
-
-        src = edge["src"]
-
-        dst = edge["dst"]
-
-        amount = edge["amount"]
-
-        adjacency.setdefault(
-            src,
-            []
-        ).append(
-            (
-                dst,
-                amount
+    print(f"Running fund flow propagation (decay={decay}, iters={iterations}) …")
+    for it in range(1, iterations + 1):
+        updates = {}
+        for node in G.nodes():
+            # Risk flows IN from predecessors (accounts that sent money here)
+            preds = list(G.predecessors(node))
+            if not preds:
+                continue
+            max_incoming = max(
+                G.nodes[p].get("propagated_risk", 0.0) for p in preds
             )
-        )
+            current = G.nodes[node].get("propagated_risk", 0.0)
+            updates[node] = min(1.0, current + decay * max_incoming)
 
-    print("Adjacency graph built")
+        for node, val in updates.items():
+            G.nodes[node]["propagated_risk"] = val
 
-    # -----------------------------------------
-    # NORMALIZE TRANSACTION WEIGHTS
-    # -----------------------------------------
+        changed = sum(1 for v in updates.values() if v > 0)
+        print(f"  Iteration {it}/{iterations}  — {changed:,} nodes updated")
 
-    for src in adjacency:
+    save_graph(G, graph_path)
+    print("  Propagation complete.")
 
-        total_amount = sum(
-
-            amount
-
-            for _, amount
-
-            in adjacency[src]
-
-        )
-
-        if total_amount == 0:
-
-            total_amount = 1
-
-        adjacency[src] = [
-
-            (
-                dst,
-                amount / total_amount
-            )
-
-            for dst, amount
-
-            in adjacency[src]
-        ]
-
-    print("Transaction weights normalized")
-
-    # -----------------------------------------
-    # PROPAGATION ITERATIONS
-    # -----------------------------------------
-
-    current_scores = dict(scores)
-
-    for iteration in range(iterations):
-
-        print(
-            f"\nRunning iteration {iteration+1}"
-        )
-
-        new_scores = {}
-
-        for node in current_scores:
-
-            propagated_risk = sum(
-
-                current_scores.get(dst, 0) * weight
-
-                for dst, weight
-
-                in adjacency.get(node, [])
-
-            )
-
-            new_scores[node] = (
-
-                (1 - decay)
-                * current_scores[node]
-
-                +
-
-                decay
-                * propagated_risk
-            )
-
-        current_scores = new_scores
-
-    print("\nPropagation complete")
-
-    # -----------------------------------------
-    # WRITE TO NEO4J
-    # -----------------------------------------
-
-    batch = [
-
-        {
-            "id": node_id,
-            "risk": float(score)
-        }
-
-        for node_id, score
-
-        in current_scores.items()
-    ]
-
-    with driver.session() as session:
-
-        for i in range(0, len(batch), 500):
-
-            session.run("""
-
-                UNWIND $rows AS row
-
-                MATCH
-                (a:Account {id: row.id})
-
-                SET
-                a.propagated_risk = row.risk
-
-            """, rows=batch[i:i+500])
-
-            print(
-                f"Written {i+500} rows"
-            )
-
-    print("\n=== SUCCESS ===")
-
-    driver.close()
-
-# ------------------------------------------------
-# MAIN
-# ------------------------------------------------
 
 if __name__ == "__main__":
-
-    propagate()
+    propagate(GRAPH_PATH, DECAY, ITERATIONS)

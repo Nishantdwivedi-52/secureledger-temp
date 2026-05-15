@@ -1,0 +1,3 @@
+# Place HI-Small_Trans.csv here (from Kaggle).
+# Or run: python scripts/generate_synthetic_data.py
+# to create data/synthetic_trans.csv for quick testing.

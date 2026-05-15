@@ -1,105 +1,116 @@
-from fastapi import FastAPI
+"""
+api/main.py
+FastAPI backend — SecureLedger AML Investigation API
+
+Loads graph.gpickle + rings.json at startup.
+All graph queries run against the in-memory NetworkX DiGraph.
+
+Routes:
+  GET /ping
+  GET /account/{id}
+  GET /account/{id}/subgraph
+  GET /risk/top
+  GET /rings
+  GET /rings/{ring_id}
+  GET /evidence/{ring_id}
+  GET /stats
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+# Allow running from repo root or from api/ directory
+sys.path.insert(0, str(Path(__file__).parent.parent / "ml"))
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from graph.graph_queries import (
-    test_connection,
-    get_dashboard_stats,
-    get_top_risky_accounts,
-    get_account_details,
-    get_recent_transactions,
-    get_subgraph,
-    detect_circular_flows,
-    detect_mule_accounts
-)
+from dotenv import load_dotenv
 
-# ------------------------------------------------
-# CREATE FASTAPI APP
-# ------------------------------------------------
+import graph_queries as gq
+from str_generator import generate_str
+from ingest import load_graph
+
+load_dotenv()
+
+GRAPH_PATH = os.getenv("GRAPH_PATH", "ml/graph.gpickle")
+RINGS_PATH = os.getenv("RINGS_PATH", "ml/rings.json")
+
 app = FastAPI(
-    title="SecureLedger API",
-    description="AI-Powered Financial Fraud Detection Backend",
-    version="1.0"
+    title="SecureLedger AML API",
+    description="Fund flow tracking & fraud ring investigation — PSBs Hackathon 2026",
+    version="1.0.0",
 )
 
-# ------------------------------------------------
-# ENABLE CORS
-# ------------------------------------------------
-# This allows your React frontend (localhost:3000 or 5173) 
-# to communicate with this Python backend (localhost:5000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ------------------------------------------------
-# ROOT & HEALTH CHECK
-# ------------------------------------------------
-@app.get("/")
-def root():
-    return {
-        "project": "SecureLedger",
-        "status": "running",
-        "message": "AI Fraud Detection Backend Active"
-    }
+# ── Startup: load graph & rings ────────────────────────────────────────────────
 
-@app.get("/api/ping")
+@app.on_event("startup")
+async def startup():
+    app.state.graph = load_graph(GRAPH_PATH)
+    with open(RINGS_PATH) as f:
+        app.state.rings = json.load(f)
+    print(f"[SecureLedger] Graph loaded: "
+          f"{app.state.graph.number_of_nodes():,} nodes, "
+          f"{app.state.graph.number_of_edges():,} edges | "
+          f"{len(app.state.rings)} rings")
+
+
+# ── Routes ─────────────────────────────────────────────────────────────────────
+
+@app.get("/ping")
 def ping():
-    return {
-        "status": "ok",
-        "neo4j": test_connection()
-    }
+    return {"status": "ok", "service": "SecureLedger AML API"}
 
-# ------------------------------------------------
-# DASHBOARD STATS
-# ------------------------------------------------
-@app.get("/api/dashboard/stats")
-def dashboard_stats():
-    return get_dashboard_stats()
 
-# ------------------------------------------------
-# TOP RISKY ACCOUNTS (The Day 3 Focus)
-# ------------------------------------------------
-@app.get("/api/risk/top")
-@app.get("/api/risk/top")
-def top_risk_accounts(limit: int = 20, search: str = None):
-    return get_top_risky_accounts(limit, search)
-
-# ------------------------------------------------
-# ACCOUNT DETAILS
-# ------------------------------------------------
-@app.get("/api/account/{account_id}")
-def account_details(account_id: str):
-    result = get_account_details(account_id)
+@app.get("/account/{account_id}")
+def get_account(account_id: str):
+    result = gq.get_account(app.state.graph, account_id)
     if result is None:
-        return {"error": "Account not found"}
+        raise HTTPException(status_code=404, detail="Account not found")
     return result
 
-# ------------------------------------------------
-# RECENT TRANSACTIONS
-# ------------------------------------------------
-@app.get("/api/account/{account_id}/transactions")
-def recent_transactions(account_id: str, limit: int = 20):
-    return get_recent_transactions(account_id, limit)
 
-# ------------------------------------------------
-# SUBGRAPH VISUALIZATION
-# ------------------------------------------------
-@app.get("/api/subgraph/{account_id}")
-def subgraph(account_id: str):
-    return get_subgraph(account_id)
+@app.get("/account/{account_id}/subgraph")
+def get_subgraph(account_id: str, hops: int = 2):
+    if not app.state.graph.has_node(account_id):
+        raise HTTPException(status_code=404, detail="Account not found")
+    return gq.get_subgraph(app.state.graph, account_id, hops=min(hops, 3))
 
-# ------------------------------------------------
-# FRAUD RING DETECTION
-# ------------------------------------------------
-@app.get("/api/fraud-rings")
-def fraud_rings():
-    return detect_circular_flows()
 
-# ------------------------------------------------
-# MULE ACCOUNT DETECTION
-# ------------------------------------------------
-@app.get("/api/mule-accounts")
-def mule_accounts():
-    return detect_mule_accounts()
+@app.get("/risk/top")
+def top_risk(limit: int = 50):
+    return gq.get_top_risk(app.state.graph, limit=min(limit, 200))
+
+
+@app.get("/rings")
+def list_rings():
+    return app.state.rings
+
+
+@app.get("/rings/{ring_id}")
+def get_ring(ring_id: str):
+    ring = next((r for r in app.state.rings if r["ring_id"] == ring_id), None)
+    if ring is None:
+        raise HTTPException(status_code=404, detail="Ring not found")
+    return ring
+
+
+@app.get("/evidence/{ring_id}")
+def get_evidence(ring_id: str):
+    ring = next((r for r in app.state.rings if r["ring_id"] == ring_id), None)
+    if ring is None:
+        raise HTTPException(status_code=404, detail="Ring not found")
+    return {"ring_id": ring_id, "str_report": generate_str(ring)}
+
+
+@app.get("/stats")
+def stats():
+    return gq.get_stats(app.state.graph, app.state.rings)

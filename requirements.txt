@@ -1,19 +1,22 @@
-pandas
-numpy
-neo4j
-fastapi
-uvicorn
-python-dotenv
-scikit-learn
-networkx
-matplotlib
-seaborn
-torch
-torchvision
-torchaudio
-node2vec
-python-louvain
-tqdm
-jupyter
-ipykernel
-torch-geometric
+# ── Core ──────────────────────────────────────────────────────────────────────
+pandas==2.0.3
+numpy==1.26.4
+python-dotenv==1.0.0
+tqdm==4.66.4
+
+# ── Graph ─────────────────────────────────────────────────────────────────────
+networkx==3.3
+python-louvain==0.16        # community.best_partition
+
+# ── ML ────────────────────────────────────────────────────────────────────────
+scikit-learn==1.4.2
+torch==2.2.2
+torch-geometric==2.5.3      # Node2Vec, GraphSAGE, PyG utilities
+
+# ── API ───────────────────────────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+httpx==0.27.0
+
+# ── Colab / notebook demo ─────────────────────────────────────────────────────
+gradio==4.36.1
