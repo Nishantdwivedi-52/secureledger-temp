@@ -1,20 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from "../components/Navbar";
+import GraphViz from "../components/GraphViz"; // Bring in the graph visualization component
 
 const RiskTable = () => {
   const [accounts, setAccounts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // State to track which account is clicked for investigation
+  const [selectedAccount, setSelectedAccount] = useState(null);
 
   useEffect(() => {
-  // If search is empty, get top 20. If search has text, ask the server for that ID.
-  const url = searchTerm 
-    ? `http://localhost:5000/api/risk/top?search=${searchTerm}`
-    : `http://localhost:5000/api/risk/top?limit=20`;
+    // FIX: Updated to 127.0.0.1:8000 to hit your running Python server
+    const url = searchTerm 
+      ? `http://127.0.0.1:8000/api/risk/top?search=${searchTerm}`
+      : `http://127.0.0.1:8000/api/risk/top?limit=20`;
 
-  fetch(url)
-    .then(res => res.json())
-    .then(data => setAccounts(data));
-}, [searchTerm]); // <--- This 'searchTerm' trigger is the key!
+    fetch(url)
+      .then(res => res.json())
+      .then(data => setAccounts(data))
+      .catch(err => console.error("Error fetching data:", err));
+  }, [searchTerm]); 
 
   // 1. Search Logic: Filters rows by Account ID
   const filtered = accounts.filter(acc => 
@@ -24,7 +29,7 @@ const RiskTable = () => {
   // 2. Sorting Logic: Descending by anomaly_score
   const sorted = [...filtered].sort((a, b) => b.anomaly_score - a.anomaly_score);
 
-  // 3. Colored Badge Logic from Section 3.5
+  // 3. Colored Badge Logic
   const getBadgeColor = (score) => {
     if (score > 0.7) return '#ef4444'; // Red (High)
     if (score >= 0.4) return '#f59e0b'; // Yellow (Medium)
@@ -64,7 +69,16 @@ const RiskTable = () => {
           </thead>
           <tbody>
             {sorted.map(acc => (
-              <tr key={acc.id} style={{ borderBottom: "1px solid #334155" }}>
+              <tr 
+                key={acc.id} 
+                onClick={() => setSelectedAccount(acc.id)} // Select account on click
+                style={{ 
+                  borderBottom: "1px solid #334155",
+                  cursor: "pointer",
+                  // Highlight the row if it's the one selected
+                  background: selectedAccount === acc.id ? "#334155" : "transparent"
+                }}
+              >
                 <td style={{ padding: "15px", fontFamily: "monospace", fontSize: "0.9rem" }}>{acc.id}</td>
                 <td style={{ padding: "15px" }}>
                   <span style={{ 
@@ -72,7 +86,8 @@ const RiskTable = () => {
                     padding: "6px 16px", 
                     borderRadius: "20px", 
                     fontWeight: "bold",
-                    fontSize: "0.85rem" 
+                    fontSize: "0.85rem",
+                    color: acc.anomaly_score >= 0.4 && acc.anomaly_score <= 0.7 ? '#000' : '#fff'
                   }}>
                     {acc.anomaly_score.toFixed(4)}
                   </span>
@@ -81,6 +96,21 @@ const RiskTable = () => {
             ))}
           </tbody>
         </table>
+
+        {/* GraphViz Panel rendering container below the table */}
+        <div style={{ marginTop: '40px', padding: '20px', borderRadius: '12px', background: '#1e293b', border: '1px solid #334155' }}>
+          {selectedAccount ? (
+            <div>
+              <h3 style={{ marginTop: 0, marginBottom: '20px', color: 'white' }}>
+                Investigating Account: <span style={{fontFamily: 'monospace'}}>{selectedAccount.substring(0, 8)}</span>
+              </h3>
+              <GraphViz accountId={selectedAccount} />
+            </div>
+          ) : (
+            <p style={{ color: '#94a3b8' }}>Click an account row in the table above to visualize its network risk graph.</p>
+          )}
+        </div>
+
       </div>
     </div>
   );

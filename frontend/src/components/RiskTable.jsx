@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import GraphViz from './GraphViz';
 
 const RiskTable = () => {
   const [accounts, setAccounts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // NEW: State to keep track of the clicked account ID
+  const [selectedAccount, setSelectedAccount] = useState(null);
 
   // 1. Fetch data from your API
   useEffect(() => {
-    fetch('http://localhost:5000/api/risk/top') 
-      .then(res => res.json())
-      .then(data => setAccounts(data))
+    // Note: Updated to port 8000 to match the FastAPI setup in the guide
+    axios.get('http://127.0.0.1:8000/api/risk/top?limit=20') 
+      .then(res => setAccounts(res.data))
       .catch(err => console.error("Error fetching risk data:", err));
   }, []);
 
@@ -58,8 +63,19 @@ const RiskTable = () => {
         </thead>
         <tbody>
           {sorted.map(acc => (
-            <tr key={acc.id} style={{ borderBottom: '1px solid #334155' }}>
-              <td style={{ padding: '15px', fontFamily: 'monospace' }}>{acc.id}</td>
+            <tr 
+              key={acc.id} 
+              // NEW: Update the state when a row is clicked
+              onClick={() => setSelectedAccount(acc.id)}
+              style={{ 
+                borderBottom: '1px solid #334155', 
+                cursor: 'pointer',
+                // Highlight the row if it is currently selected
+                background: selectedAccount === acc.id ? '#334155' : 'transparent' 
+              }}
+            >
+              {/* Show only the first 8 characters of the ID in the table */}
+              <td style={{ padding: '15px', fontFamily: 'monospace' }}>{acc.id.substring(0, 8)}</td>
               <td style={{ padding: '15px' }}>
                 <span style={{
                   padding: '4px 12px',
@@ -76,6 +92,21 @@ const RiskTable = () => {
           ))}
         </tbody>
       </table>
+
+      {/* NEW: The GraphViz rendering area below the table */}
+      <div style={{ marginTop: '40px', padding: '20px', borderRadius: '12px', background: '#1e293b', border: '1px solid #334155' }}>
+        {selectedAccount ? (
+          <div>
+            <h3 style={{ marginTop: 0, marginBottom: '20px', color: 'white' }}>
+              Investigating Account: <span style={{fontFamily: 'monospace'}}>{selectedAccount.substring(0, 8)}</span>
+            </h3>
+            <GraphViz accountId={selectedAccount} />
+          </div>
+        ) : (
+          <p style={{ color: '#94a3b8' }}>Click an account in the table above to view its risk graph.</p>
+        )}
+      </div>
+
     </div>
   );
 };

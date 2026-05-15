@@ -12,7 +12,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     // 2. Fetch the actual data
-    fetch("http://localhost:5000/api/dashboard/stats")
+    fetch("http://127.0.0.1:8000/api/dashboard/stats")
       .then((res) => res.json())
       .then((data) => {
         setStats(data);
