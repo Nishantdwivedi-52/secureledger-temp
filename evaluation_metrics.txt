@@ -1,11 +1,11 @@
 === MODEL EVALUATION ===
 
-Best Threshold : 0.10
+Best Threshold : 0.50
 
-Precision : 0.0021
-Recall    : 0.6908
-F1 Score  : 0.0041
+Precision : 0.0109
+Recall    : 0.0066
+F1 Score  : 0.0082
 
 Confusion Matrix:
-[[51109 50892]
- [   47   105]]
+[[101910     91]
+ [   151      1]]
