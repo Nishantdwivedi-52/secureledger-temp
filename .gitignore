@@ -1,50 +1,12 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-venv/
-env/
-.venv/
-*.egg-info/
-dist/
-build/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Environment
-.env
-
-# ── Data (large files) ────────────────────────────────────────────────────────
-data/HI-Small_Trans.csv
-data/*.csv
-data/*.parquet
-
-# ── ML artifacts ──────────────────────────────────────────────────────────────
+data/
+ml/graph.pt
 ml/embeddings.npy
-ml/graph.gpickle
+ml/anomaly_scores.npy
 ml/rings.json
-ml/models/
-*.pkl
-*.pt
-*.pth
-
-# ── Generated reports ─────────────────────────────────────────────────────────
-reports/
-
-# Node / frontend
+ml/sage_model.pt
+venv/
+__pycache__/
+*.pyc
+.env
 node_modules/
 frontend/dist/
-frontend/.env
-
-# IDE / OS
-.vscode/
-.idea/
-*.swp
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
