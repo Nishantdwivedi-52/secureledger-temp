@@ -9,11 +9,7 @@ networkx
 matplotlib
 seaborn
 torch
-torchvision
-torchaudio
 node2vec
 python-louvain
 tqdm
-jupyter
-ipykernel
 torch-geometric
