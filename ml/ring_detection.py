@@ -1,139 +1,136 @@
-import json
-import networkx as nx
-import community as community_louvain
+# =========================================================
+# FRAUD RING DETECTION — FULLY CORRECTED VERSION
+# =========================================================
 
+import json
+from collections import defaultdict
+
+import community as community_louvain
+import networkx as nx
 from neo4j import GraphDatabase
 
-# ------------------------------------------------
-# CONNECT TO NEO4J
-# ------------------------------------------------
+
+print("LOADED UPDATED RING DETECTION FILE")
+
+
+# =========================================================
+# NEO4J CONNECTION
+# =========================================================
+
+URI = "bolt://localhost:7687"
+USERNAME = "neo4j"
+PASSWORD = "secureledger123"
 
 driver = GraphDatabase.driver(
-    "bolt://localhost:7687",
-    auth=("neo4j", "secureledger123")
+    URI,
+    auth=(USERNAME, PASSWORD)
 )
 
-# ------------------------------------------------
-# BUILD HIGH-RISK SUBGRAPH
-# ------------------------------------------------
 
-def build_risk_subgraph(
-    threshold=0.5
-):
+# =========================================================
+# BUILD RISK SUBGRAPH
+# =========================================================
 
-    print("\n=== BUILDING RISK SUBGRAPH ===\n")
+def build_risk_subgraph(threshold=0.05):
+
+    print("\n=== BUILDING RISK SUBGRAPH ===")
+
+    G = nx.Graph()
+
+    query = """
+    MATCH
+        (src:Account)-[tx:TRANSACTION]->(dst:Account)
+
+    WHERE
+        src.fraud_prob >= $threshold
+        OR
+        dst.fraud_prob >= $threshold
+
+    RETURN
+        src.id AS src,
+        dst.id AS dst,
+
+        coalesce(src.fraud_prob, 0.0) AS src_prob,
+        coalesce(dst.fraud_prob, 0.0) AS dst_prob,
+
+        coalesce(tx.amount_paid, 1.0) AS amount,
+
+        coalesce(tx.is_laundering, 0) AS is_fraud
+    """
 
     with driver.session() as session:
 
-        edges = session.run("""
-
-            MATCH
-
-            (src:Account)
-
-            -[t:TRANSACTION]->
-
-            (dst:Account)
-
-            WHERE
-
-            src.fraud_prob > $threshold
-
-            OR
-
-            dst.fraud_prob > $threshold
-
-            RETURN
-
-            src.id AS src,
-
-            dst.id AS dst,
-
-            t.amount_paid AS amount,
-
-            t.is_laundering AS fraud
-
-        """, threshold=threshold).data()
-
-    G = nx.DiGraph()
-
-    for edge in edges:
-
-        G.add_edge(
-
-            edge["src"],
-
-            edge["dst"],
-
-            weight=float(
-                edge["amount"]
-            ),
-
-            fraud=int(
-                edge["fraud"]
-            )
+        result = session.run(
+            query,
+            threshold=threshold
         )
 
-    print(
-        f"Nodes : {G.number_of_nodes()}"
-    )
+        for record in result:
 
-    print(
-        f"Edges : {G.number_of_edges()}"
-    )
+            src = str(record["src"]).strip()
+            dst = str(record["dst"]).strip()
+
+            src_prob = float(record["src_prob"])
+            dst_prob = float(record["dst_prob"])
+
+            amount = float(record["amount"])
+
+            is_fraud = bool(record["is_fraud"])
+
+            # Dynamic edge weight
+            weight = amount
+
+            if is_fraud:
+                weight *= 3.0
+
+            weight *= (1.0 + src_prob + dst_prob)
+
+            G.add_edge(
+                src,
+                dst,
+                weight=weight,
+                amount=amount,
+                is_fraud=is_fraud
+            )
+
+    print(f"Nodes : {G.number_of_nodes()}")
+    print(f"Edges : {G.number_of_edges()}")
 
     return G
 
-# ------------------------------------------------
+
+# =========================================================
 # DETECT COMMUNITIES
-# ------------------------------------------------
+# =========================================================
 
-def detect_communities(G):
+def get_suspicious_communities(G):
 
-    print("\n=== RUNNING LOUVAIN ===\n")
+    print("\n=== RUNNING LOUVAIN COMMUNITY DETECTION ===")
 
-    undirected = G.to_undirected()
+    if G.number_of_nodes() == 0:
+
+        print("Empty graph.")
+        return {}
 
     partition = community_louvain.best_partition(
-        undirected
+        G,
+        weight="weight"
     )
 
-    print(
-        f"Communities Found : {len(set(partition.values()))}"
-    )
+    print("Partition size:", len(partition))
+    print("Partition sample:", list(partition.items())[:10])
 
-    return partition
-
-# ------------------------------------------------
-# FILTER SUSPICIOUS COMMUNITIES
-# ------------------------------------------------
-
-def get_suspicious_communities(
-    G,
-    partition
-):
-
-    print("\n=== FILTERING FRAUD RINGS ===\n")
-
-    communities = {}
+    communities = defaultdict(list)
 
     for node, comm_id in partition.items():
 
-        communities.setdefault(
-            comm_id,
-            []
-        ).append(node)
+        communities[comm_id].append(node)
 
     suspicious = {}
 
-    for comm_id, nodes in communities.items():
+    for comm_id, members in communities.items():
 
-        # Ignore tiny groups
-
-        if len(nodes) < 3:
-            continue
-
-        subG = G.subgraph(nodes)
+        subG = G.subgraph(members)
 
         fraud_edges = sum(
 
@@ -143,223 +140,139 @@ def get_suspicious_communities(
 
             in subG.edges(data=True)
 
-            if d.get("fraud") == 1
+            if d.get("is_fraud") is True
         )
 
-        avg_degree = sum(
+        total_edges = max(
+            subG.number_of_edges(),
+            1
+        )
 
-            dict(subG.degree()).values()
+        fraud_ratio = fraud_edges / total_edges
 
-        ) / max(len(nodes), 1)
+        avg_degree = (
 
-        # Keep suspicious communities only
+            sum(dict(subG.degree()).values())
 
-        if fraud_edges > 0 or avg_degree > 2:
+            / max(len(members), 1)
+        )
+
+        total_volume = sum(
+
+            d.get("amount", 0.0)
+
+            for _, _, d
+
+            in subG.edges(data=True)
+        )
+
+        # Keep all meaningful communities
+        if len(members) >= 2:
 
             suspicious[comm_id] = {
 
-                "nodes": nodes,
+                "members": members,
 
-                "fraud_edges": fraud_edges,
+                "fraud_ratio": fraud_ratio,
 
-                "size": len(nodes),
+                "avg_degree": avg_degree,
 
-                "avg_degree": round(avg_degree, 2)
+                "total_volume": total_volume
             }
 
+    print(f"Suspicious Rings Found : {len(suspicious)}")
+
     print(
-        f"Suspicious Rings : {len(suspicious)}"
+        "Suspicious keys sample:",
+        list(suspicious.keys())[:10]
     )
 
     return suspicious
 
-# ------------------------------------------------
-# IDENTIFY MASTERMINDS
-# ------------------------------------------------
 
-def identify_masterminds(
-    G,
-    suspicious
-):
+# =========================================================
+# IDENTIFY MASTERMIND
+# =========================================================
 
-    print("\n=== IDENTIFYING MASTERMINDS ===\n")
+def identify_mastermind(G, members):
 
-    rings = []
+    subG = G.subgraph(members)
 
-    for comm_id, info in suspicious.items():
+    centrality = nx.degree_centrality(subG)
 
-        nodes = info["nodes"]
+    mastermind = max(
+        centrality,
+        key=centrality.get
+    )
 
-        subG = G.subgraph(nodes).copy()
+    normalized_scores = {}
 
-        # ----------------------------------------
-        # PAGERANK
-        # ----------------------------------------
+    max_score = max(
+        centrality.values()
+    ) if centrality else 1.0
 
-        pagerank = nx.pagerank(
-            subG,
-            weight="weight",
-            alpha=0.85
+    for node, score in centrality.items():
+
+        normalized_scores[node] = float(
+            score / max_score
         )
 
-        # ----------------------------------------
-        # BETWEENNESS CENTRALITY
-        # ----------------------------------------
+    return mastermind, normalized_scores
 
-        betweenness = nx.betweenness_centrality(
-            subG,
-            weight="weight",
-            normalized=True
+
+# =========================================================
+# SAVE JSON
+# =========================================================
+
+def save_ring_json(suspicious, G):
+
+    print("\n=== SAVING fraud_rings.json ===")
+
+    data = []
+
+    for ring_id, info in suspicious.items():
+
+        members = info["members"]
+
+        mastermind, scores = identify_mastermind(
+            G,
+            members
         )
 
-        # ----------------------------------------
-        # NORMALIZATION
-        # ----------------------------------------
+        data.append({
 
-        def normalize(scores):
+            "ring_id": int(ring_id),
 
-            max_score = max(
-                scores.values()
-            ) or 1
+            "size": len(members),
 
-            return {
+            "members": [
+                str(x)
+                for x in members
+            ],
 
-                k: v / max_score
+            "mastermind": str(mastermind),
+
+            "fraud_ratio": float(
+                info["fraud_ratio"]
+            ),
+
+            "avg_degree": float(
+                info["avg_degree"]
+            ),
+
+            "total_volume": float(
+                info["total_volume"]
+            ),
+
+            "scores": {
+
+                str(k): float(v)
 
                 for k, v
 
                 in scores.items()
             }
-
-        pr_norm = normalize(
-            pagerank
-        )
-
-        bc_norm = normalize(
-            betweenness
-        )
-
-        # ----------------------------------------
-        # COMBINED SCORE
-        # ----------------------------------------
-
-        combined_scores = {}
-
-        for node in nodes:
-
-            combined_scores[node] = (
-
-                0.5 * pr_norm[node]
-
-                +
-
-                0.5 * bc_norm[node]
-            )
-
-        mastermind = max(
-            combined_scores,
-            key=combined_scores.get
-        )
-
-        print(
-            f"ring_{comm_id} -> mastermind = {mastermind[:8]}"
-        )
-
-        # ----------------------------------------
-        # BUILD RING OBJECT
-        # ----------------------------------------
-
-        ring = {
-
-            "ring_id": f"ring_{comm_id}",
-
-            "mastermind": mastermind,
-
-            "nodes": nodes,
-
-            "size": len(nodes),
-
-            "fraud_edges": info["fraud_edges"],
-
-            "avg_degree": info["avg_degree"],
-
-            "scores": {
-
-                k: float(v)
-
-                for k, v
-
-                in combined_scores.items()
-            }
-        }
-
-        rings.append(ring)
-
-    return rings
-
-# ------------------------------------------------
-# WRITE RESULTS TO NEO4J
-# ------------------------------------------------
-
-def write_ring_data(rings):
-
-    print("\n=== WRITING TO NEO4J ===\n")
-
-    with driver.session() as session:
-
-        for ring in rings:
-
-            print(
-                f"Writing {ring['ring_id']}"
-            )
-
-            batch = []
-
-            for node in ring["nodes"]:
-
-                batch.append({
-
-                    "id": node,
-
-                    "ring_id": str(
-                        ring["ring_id"]
-                    ),
-
-                    "score": float(
-                        ring["scores"][node]
-                    ),
-
-                    "is_mastermind":
-
-                    bool(
-                        node == ring["mastermind"]
-                    )
-                })
-
-            session.run("""
-
-                UNWIND $rows AS row
-
-                MATCH
-                (a:Account {id: row.id})
-
-                SET
-
-                a.ring_id = row.ring_id,
-
-                a.mastermind_score = row.score,
-
-                a.is_mastermind = row.is_mastermind
-
-            """, rows=batch)
-
-    print("\nNeo4j updated successfully")
-
-# ------------------------------------------------
-# SAVE JSON FILE
-# ------------------------------------------------
-
-def save_rings_json(rings):
+        })
 
     with open(
         "ml/rings.json",
@@ -367,43 +280,166 @@ def save_rings_json(rings):
     ) as f:
 
         json.dump(
-            rings,
+            data,
             f,
-            indent=2
+            indent=4
         )
 
-    print("\nrings.json saved")
+    print("Saved fraud_rings.json")
 
-# ------------------------------------------------
-# MAIN PIPELINE
-# ------------------------------------------------
+
+# =========================================================
+# WRITE RESULTS TO NEO4J
+# =========================================================
+
+def save_results_to_neo4j(G, suspicious):
+
+    print("\n=== WRITING RESULTS TO NEO4J ===")
+
+    rows = []
+
+    for ring_id, info in suspicious.items():
+
+        members = info["members"]
+
+        mastermind, scores = identify_mastermind(
+            G,
+            members
+        )
+
+        for node in members:
+
+            rows.append({
+
+                "account_id": str(node).strip(),
+
+                "ring_id": int(ring_id),
+
+                "mastermind_score": float(
+                    scores[node]
+                ),
+
+                "is_mastermind": bool(
+                    node == mastermind
+                ),
+
+                "ring_size": int(
+                    len(members)
+                ),
+
+                "fraud_ratio": float(
+                    info["fraud_ratio"]
+                ),
+
+                "avg_degree": float(
+                    info["avg_degree"]
+                ),
+
+                "total_volume": float(
+                    info["total_volume"]
+                )
+            })
+
+    print("Rows prepared:", len(rows))
+
+    if len(rows) == 0:
+
+        print("No suspicious rings found.")
+        return
+
+    print(rows[:5])
+
+    query = """
+    UNWIND $rows AS row
+
+    MATCH (a:Account {id: row.account_id})
+
+    SET
+        a.ring_id = row.ring_id,
+        a.mastermind_score = row.mastermind_score,
+        a.is_mastermind = row.is_mastermind,
+        a.ring_size = row.ring_size,
+        a.ring_fraud_ratio = row.fraud_ratio,
+        a.ring_avg_degree = row.avg_degree,
+        a.ring_total_volume = row.total_volume
+    """
+
+    # =====================================================
+    # BATCH WRITE TO NEO4J
+    # =====================================================
+
+    BATCH_SIZE = 5000
+
+    with driver.session() as session:
+
+        total_batches = (
+            len(rows) // BATCH_SIZE
+        ) + 1
+
+        for i in range(0, len(rows), BATCH_SIZE):
+
+            batch = rows[i:i + BATCH_SIZE]
+
+            current_batch = (
+                i // BATCH_SIZE
+            ) + 1
+
+            print(
+                f"Writing batch "
+                f"{current_batch}/{total_batches}"
+            )
+
+            def write_tx(tx):
+
+                result = tx.run(
+                    query,
+                    rows=batch
+                )
+
+                result.consume()
+
+            session.execute_write(
+                write_tx
+            )
+
+    print("Neo4j updated successfully.")
+
+# =========================================================
+# RUN PIPELINE
+# =========================================================
 
 def run_ring_detection():
 
-    G = build_risk_subgraph()
+    print("\n=== FRAUD RING DETECTION PIPELINE ===")
 
-    partition = detect_communities(G)
-
-    suspicious = get_suspicious_communities(
-        G,
-        partition
+    G = build_risk_subgraph(
+        threshold=0.05
     )
 
-    rings = identify_masterminds(
+    suspicious = get_suspicious_communities(G)
+
+    save_ring_json(
+        suspicious,
+        G
+    )
+
+    save_results_to_neo4j(
         G,
         suspicious
     )
 
-    write_ring_data(rings)
+    print("\n=== FRAUD RING DETECTION COMPLETE ===")
 
-    save_rings_json(rings)
 
-    print("\n=== RING DETECTION COMPLETE ===\n")
-
-# ------------------------------------------------
+# =========================================================
 # MAIN
-# ------------------------------------------------
+# =========================================================
+
+def main():
+
+    run_ring_detection()
+
 
 if __name__ == "__main__":
 
-    run_ring_detection()
+    main()

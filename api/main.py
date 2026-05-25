@@ -7,6 +7,7 @@ import os
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
+from fastapi.responses import JSONResponse
 
 from graph.graph_queries import (
     test_connection,
@@ -397,25 +398,46 @@ def subgraph(account_id: str):
 # ------------------------------------------------
 # EVIDENCE, STR REPORTS & TIMELINE
 # ------------------------------------------------
-@app.get("/api/report/{ring_id}", response_class=PlainTextResponse, tags=["Reports"])
-def generate_report(ring_id: str):
-    """
-    Generate a Suspicious Transaction Report (STR) for a given ring.
-    Returns plain text suitable for download or display.
-    """
+
+@app.get(
+    "/api/report/{ring_id}",
+    response_class=JSONResponse,
+    tags=["Reports"]
+)
+def generate_report(ring_id: int):
+
     rings = load_rings()
 
-    ring = next((r for r in rings if r["ring_id"] == ring_id), None)
+    ring = next(
+
+        (
+            r for r in rings
+
+            if int(r["ring_id"]) == int(ring_id)
+        ),
+
+        None
+    )
+
     if ring is None:
-        # PlainTextResponse route — raise as plain text, not JSON
+
         raise HTTPException(
+
             status_code=404,
-            detail=f"Ring '{ring_id}' not found — cannot generate report."
+
+            detail=(
+                f"Ring '{ring_id}' "
+                f"not found — cannot generate report."
+            )
         )
 
-    evidence = generate_evidence(ring)
-    return generate_str_report(evidence)
+    evidence = generate_evidence(
+        ring_id
+    )
 
+    return generate_str_report(
+        ring_id
+    )
 
 @app.get("/api/timeline/{ring_id}", tags=["Reports"])
 def get_timeline(ring_id: str) -> list[dict[str, Any]]:

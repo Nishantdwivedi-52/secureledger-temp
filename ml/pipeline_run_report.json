@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-05-25T19:32:05.902463",
-  "success": false,
-  "total_elapsed": 299.52,
+  "timestamp": "2026-05-25T23:22:20.861169",
+  "success": true,
+  "total_elapsed": 129.0,
   "steps": [
     {
       "number": 1,
@@ -51,19 +51,19 @@
     {
       "number": 6,
       "name": "GNN Training",
-      "status": "failed",
-      "elapsed": 63.7,
-      "started_at": "2026-05-25T19:27:06.374068",
-      "finished_at": "2026-05-25T19:28:10.074297",
-      "error": "Traceback (most recent call last):\n  File \"C:\\Users\\HP\\OneDrive\\\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\\GitHub\\secureledger-temp\\run_pipeline.py\", line 775, in execute_step\n    step.runner()\n  File \"C:\\Users\\HP\\OneDrive\\\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\\GitHub\\secureledger-temp\\run_pipeline.py\", line 611, in run_gnn\n    module.main()\n  File \"C:\\Users\\HP\\OneDrive\\\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\\GitHub\\secureledger-temp\\ml/gnnn.py\", line 706, in main\n    synth_logits = model.head(aug_x_t)\n                   ^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\HP\\OneDrive\\\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\\GitHub\\secureledger-temp\\venv\\Lib\\site-packages\\torch\\nn\\modules\\module.py\", line 1553, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\HP\\OneDrive\\\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\\GitHub\\secureledger-temp\\venv\\Lib\\site-packages\\torch\\nn\\modules\\module.py\", line 1562, in _call_impl\n    return forward_call(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\HP\\OneDrive\\\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\\GitHub\\secureledger-temp\\venv\\Lib\\site-packages\\torch\\nn\\modules\\linear.py\", line 117, in forward\n    return F.linear(input, self.weight, self.bias)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: mat1 and mat2 shapes cannot be multiplied (415331x74 and 256x2)\n"
+      "status": "skipped",
+      "elapsed": 0.0,
+      "started_at": null,
+      "finished_at": null,
+      "error": null
     },
     {
       "number": 7,
       "name": "Fraud Ring Detection",
-      "status": "aborted",
-      "elapsed": 0.0,
-      "started_at": null,
-      "finished_at": null,
+      "status": "success",
+      "elapsed": 129.0,
+      "started_at": "2026-05-25T23:20:11.845440",
+      "finished_at": "2026-05-25T23:22:20.855474",
       "error": null
     }
   ]

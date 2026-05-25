@@ -12,7 +12,7 @@ Usage examples:
   # Full pipeline
   python run_pipeline.py
 
-  # Skip ingestion (data already in Neo4j)
+  
   python run_pipeline.py --skip-ingest
 
   # Start from step 3 (embeddings already built)
@@ -613,9 +613,14 @@ def run_gnn() -> None:
 
 def run_louvain() -> None:
     """Step 7 — Detect fraud rings via Louvain community detection."""
-    spec   = importlib.util.spec_from_file_location("louvain", "ml/louvain.py")
-    module = importlib.util.module_from_spec(spec)       # type: ignore[arg-type]
-    spec.loader.exec_module(module)                      # type: ignore[union-attr]
+    
+    spec = importlib.util.spec_from_file_location(
+        "ring_detection",
+        "ml/ring_detection.py"
+    )
+
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(module)                 # type: ignore[union-attr]
 
     if hasattr(module, "main"):
         module.main()
@@ -680,7 +685,7 @@ def build_pipeline(args: argparse.Namespace) -> list[PipelineStep]:
             number=7,
             name="Fraud Ring Detection",
             description="Run Louvain community detection to identify fraud rings",
-            module_path="ml/louvain.py",
+            module_path="ml/ring_detection.py",
             runner=run_louvain,
         ),
     ]

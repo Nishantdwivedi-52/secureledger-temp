@@ -1,311 +1,183 @@
+import json
+from pathlib import Path
 from datetime import datetime
 
-from neo4j import GraphDatabase
 
-from ml.patterns import (
+# =========================================================
+# LOAD RINGS
+# =========================================================
 
-    detect_circular_flow,
+RINGS_PATH = Path("ml/rings.json")
 
-    detect_mule_network,
 
-    detect_dormant_activation,
+def load_rings():
 
-    detect_currency_layering
-)
+    if not RINGS_PATH.exists():
 
-# ------------------------------------------------
-# NEO4J CONNECTION
-# ------------------------------------------------
+        raise FileNotFoundError(
+            "ml/rings.json not found"
+        )
 
-driver = GraphDatabase.driver(
+    with open(RINGS_PATH, "r") as f:
 
-    'bolt://localhost:7687',
+        rings = json.load(f)
 
-    auth=('neo4j', 'secureledger123')
-)
+    return rings
 
-# ------------------------------------------------
-# GENERATE EVIDENCE PACKAGE
-# ------------------------------------------------
 
-def generate_evidence(ring):
+# =========================================================
+# GENERATE EVIDENCE
+# =========================================================
 
-    nodes = ring['nodes']
+def generate_evidence(ring_id):
 
-    # --------------------------------------------
-    # LOAD TRANSACTIONS
-    # --------------------------------------------
+    rings = load_rings()
 
-    with driver.session() as s:
+    # =====================================================
+    # CORRECTED RING LOOKUP
+    # =====================================================
 
-        txns = s.run(
+    target_ring = None
 
-            '''
+    for ring in rings:
 
-            MATCH
+        if int(ring["ring_id"]) == int(ring_id):
 
-            (src:Account)
+            target_ring = ring
+            break
 
-            -[t:TRANSACTION]->
+    if target_ring is None:
 
-            (dst:Account)
+        raise ValueError(
+            f"Ring '{ring_id}' not found — cannot generate report."
+        )
 
-            WHERE
+    # =====================================================
+    # CORRECTED MEMBERS FIELD
+    # =====================================================
 
-            src.id IN $nodes
+    nodes = target_ring["members"]
 
-            AND
-
-            dst.id IN $nodes
-
-            RETURN
-
-            src.id AS from_acc,
-
-            dst.id AS to_acc,
-
-            t.amount_paid AS amount,
-
-            t.timestamp AS ts,
-
-            t.payment_format AS fmt,
-
-            t.is_laundering AS fraud
-
-            ORDER BY t.timestamp
-
-            ''',
-
-            nodes=nodes
-
-        ).data()
-
-    # --------------------------------------------
-    # PATTERN DETECTION
-    # --------------------------------------------
-
-    patterns = {
-
-        'circular_flow':
-
-        detect_circular_flow(nodes),
-
-        'mule_network':
-
-        detect_mule_network(nodes),
-
-        'dormant_activation':
-
-        detect_dormant_activation(nodes),
-
-        'currency_layering':
-
-        detect_currency_layering(nodes),
-    }
-
-    # --------------------------------------------
-    # ACTIVE PATTERNS
-    # --------------------------------------------
-
-    active_patterns = [
-
-        k
-
-        for k, v in patterns.items()
-
-        if v['detected']
-    ]
-
-    # --------------------------------------------
-    # SAFE TIMESTAMPS
-    # --------------------------------------------
-
-    timestamps = [
-
-        t.get('ts')
-
-        for t in txns
-
-        if t.get('ts')
-    ]
-
-    # --------------------------------------------
-    # FINAL EVIDENCE OBJECT
-    # --------------------------------------------
+    mastermind = target_ring.get(
+        "mastermind",
+        "UNKNOWN"
+    )
 
     evidence = {
 
-        'case_id':
+        "ring_id": target_ring["ring_id"],
 
-        f'SEC-{ring["ring_id"].upper()}',
+        "mastermind": mastermind,
 
-        'generated_at':
+        "nodes": nodes,
 
-        datetime.now().isoformat(),
+        "member_count": len(nodes),
 
-        'ring_id':
-
-        ring['ring_id'],
-
-        'flagged_accounts':
-
-        nodes,
-
-        'mastermind':
-
-        ring['mastermind'],
-
-        'total_amount':
-
-        round(
-
-            sum(
-                t.get('amount', 0) or 0
-                for t in txns
-            ),
-
-            2
+        "fraud_ratio": target_ring.get(
+            "fraud_ratio",
+            0.0
         ),
 
-        'time_window': {
+        "avg_degree": target_ring.get(
+            "avg_degree",
+            0.0
+        ),
 
-            'start':
+        "total_volume": target_ring.get(
+            "total_volume",
+            0.0
+        ),
 
-            min(timestamps)
-
-            if timestamps else None,
-
-            'end':
-
-            max(timestamps)
-
-            if timestamps else None
-        },
-
-        'transaction_count':
-
-        len(txns),
-
-        'fraud_transaction_count':
-
-        len([
-
-            t for t in txns
-
-            if t.get('fraud', 0) == 1
-        ]),
-
-        'active_patterns':
-
-        active_patterns,
-
-        'pattern_details':
-
-        patterns,
-
-        'transaction_timeline':
-
-        txns
+        "scores": target_ring.get(
+            "scores",
+            {}
+        )
     }
 
     return evidence
 
-# ------------------------------------------------
+
+# =========================================================
 # GENERATE STR REPORT
-# ------------------------------------------------
+# =========================================================
 
-def generate_str_report(evidence):
+def generate_str_report(ring_id):
 
-    lines = [
+    rings = load_rings()
 
-        'SUSPICIOUS TRANSACTION REPORT (STR)',
+    # =====================================================
+    # CORRECTED RING LOOKUP
+    # =====================================================
 
-        '=' * 60,
+    target_ring = None
 
-        f'Case ID: {evidence["case_id"]}',
+    for ring in rings:
 
-        f'Generated At: {evidence["generated_at"]}',
+        if int(ring["ring_id"]) == int(ring_id):
 
-        f'Ring ID: {evidence["ring_id"]}',
+            target_ring = ring
+            break
 
-        f'Mastermind: {evidence["mastermind"]}',
+    if target_ring is None:
 
-        f'Flagged Accounts: {len(evidence["flagged_accounts"])}',
-
-        f'Total Amount: {evidence["total_amount"]:,.2f}',
-
-        f'Transactions: {evidence["transaction_count"]}',
-
-        f'Fraud Transactions: {evidence["fraud_transaction_count"]}',
-
-        '',
-
-        'DETECTED PATTERNS:',
-    ]
-
-    # --------------------------------------------
-    # PATTERN LIST
-    # --------------------------------------------
-
-    for p in evidence['active_patterns']:
-
-        lines.append(
-
-            f' - {p.replace("_"," ").title()}'
+        raise ValueError(
+            f"Ring '{ring_id}' not found — cannot generate report."
         )
 
-    # --------------------------------------------
-    # FLAGGED ACCOUNTS
-    # --------------------------------------------
+    # =====================================================
+    # CORRECTED MEMBERS FIELD
+    # =====================================================
 
-    lines.extend([
+    nodes = target_ring["members"]
 
-        '',
+    mastermind = target_ring.get(
+        "mastermind",
+        "UNKNOWN"
+    )
 
-        'FLAGGED ACCOUNTS:'
-    ])
+    report = {
 
-    for acc in evidence['flagged_accounts']:
+        # =================================================
+        # CORRECTED REPORT ID
+        # =================================================
 
-        lines.append(f' - {acc}')
+        "report_id": f'SEC-{target_ring["ring_id"]}',
 
-    # --------------------------------------------
-    # TRANSACTION TIMELINE
-    # --------------------------------------------
+        "generated_at": datetime.now().isoformat(),
 
-    lines.extend([
+        "ring_id": target_ring["ring_id"],
 
-        '',
+        "mastermind": mastermind,
 
-        'TRANSACTION TIMELINE:'
-    ])
+        "nodes": nodes,
 
-    for t in evidence['transaction_timeline'][:20]:
+        "member_count": len(nodes),
 
-        lines.append(
+        "fraud_ratio": target_ring.get(
+            "fraud_ratio",
+            0.0
+        ),
 
-            f'{t.get("ts")} | '
+        "avg_degree": target_ring.get(
+            "avg_degree",
+            0.0
+        ),
 
-            f'{str(t.get("from_acc"))[:8]} '
+        "total_volume": target_ring.get(
+            "total_volume",
+            0.0
+        ),
 
-            f'-> '
+        "risk_level": "HIGH",
 
-            f'{str(t.get("to_acc"))[:8]} | '
-
-            f'{(t.get("amount",0) or 0):,.2f} | '
-
-            f'{"FRAUD" if t.get("fraud",0) else "NORMAL"}'
+        "summary": (
+            f"Fraud ring "
+            f"{target_ring['ring_id']} "
+            f"contains "
+            f"{len(nodes)} accounts "
+            f"with mastermind "
+            f"{mastermind}."
         )
+    }
 
-    # --------------------------------------------
-    # REPORT END
-    # --------------------------------------------
-
-    lines.extend([
-
-        '',
-
-        'END OF REPORT'
-    ])
-
-    return '\n'.join(lines)
+    return report
