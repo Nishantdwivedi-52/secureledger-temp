@@ -1,11 +1,19 @@
 === MODEL EVALUATION ===
 
-Best Threshold : 0.50
+Best Threshold : 0.65
 
-Precision : 0.0050
-Recall    : 0.0066
-F1 Score  : 0.0057
+Precision : 0.8768
+Recall    : 0.9315
+F1 Score  : 0.9033
+
+AUC-ROC   : 0.9990
+Avg Prec  : 0.8905
 
 Confusion Matrix:
-[[101802    199]
- [   151      1]]
+[[101773     44]
+ [    23    313]]
+
+Training epochs : 425
+Best GNN-only F1: 0.9235
+Ensemble weights: GNN=0.6 IForest=0.4
+Run timestamp   : 2026-05-25T21:27:02.802735

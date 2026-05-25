@@ -188,7 +188,7 @@ def load_rich_features(driver, id2idx: dict) -> np.ndarray:
         // Active days: difference between first/last transaction timestamps
         // Timestamps stored as epoch seconds; fall back to 0 if missing
         CASE WHEN first_ts IS NOT NULL AND last_ts IS NOT NULL
-             THEN toFloat(last_ts - first_ts) / 86400.0
+             THEN (toFloat(last_ts) - toFloat(first_ts)) / 86400.0
              ELSE 0.0 END AS active_days
     """
 
@@ -703,7 +703,9 @@ def main() -> None:
         # We run a linear pass through the classifier head only for synthetics.
         # This avoids adding phantom edges to the graph while still letting
         # synthetic fraud gradients influence the classifier head.
-        synth_logits = model.head(aug_x_t)
+        synth_logits = model.head(
+    F.relu(model.bn1(model.conv1(aug_x_t.to(device), data.edge_index[:, :1].to(device))))
+)
         synth_loss   = criterion(synth_logits, aug_labels_t)
 
         # Blend: real graph loss dominates, synth adds regularisation signal
