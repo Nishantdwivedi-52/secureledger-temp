@@ -13,3 +13,5 @@ node2vec
 python-louvain
 tqdm
 torch-geometric
+rich
+websockets
