@@ -13,7 +13,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import axios from "axios";
 
-const API = "http://127.0.0.1:8000";
+const API =
+"https://lesser-grandkid-oxymoron.ngrok-free.dev";
 
 // ─── colour helpers ────────────────────────────────────────────────────────────
 
@@ -151,7 +152,14 @@ export default function GraphViz({ accountId }) {
     setLoading(true);
     setError(null);
 
-    axios.get(`${API}/api/subgraph/${accountId}`)
+    axios.get(
+  `${API}/api/subgraph/${accountId}`,
+  {
+    headers: {
+      "ngrok-skip-browser-warning": "true"
+    }
+  }
+)
       .then(({ data }) => {
         const rawNodes = data.nodes || [];
         const rawLinks = data.links || data.edges || [];

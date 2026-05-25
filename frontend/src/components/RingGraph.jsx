@@ -11,8 +11,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import axios from "axios";
-
-const API      = "http://127.0.0.1:8000";
+const API =
+"https://lesser-grandkid-oxymoron.ngrok-free.dev";
 const PG_LIMIT = 60;      // nodes per page — matches backend default
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -159,9 +159,19 @@ export default function RingGraph() {
   const fetchPage = useCallback(async (currentSkip) => {
     setLoading(true);
     try {
-      const { data } = await axios.get(`${API}/api/rings/graph`, {
-        params: { skip: currentSkip, limit: PG_LIMIT },
-      });
+      const { data } = await axios.get(
+  `${API}/api/rings/graph`,
+  {
+    params: {
+      skip: currentSkip,
+      limit: PG_LIMIT
+    },
+
+    headers: {
+      "ngrok-skip-browser-warning": "true"
+    }
+  }
+);
       setGraph(prev => mergeGraphData(prev, data));
       setHasMore(data.has_more ?? false);
       setSkip(currentSkip + PG_LIMIT);

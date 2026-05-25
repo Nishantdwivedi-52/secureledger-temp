@@ -51,14 +51,30 @@ export default function Investigator() {
 
   // ── API calls ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    axios.get(`${API}/api/rings/stats`)
-      .then(r => setStats(r.data))
-      .catch(console.error);
 
-    axios.get(`${API}/api/masterminds`)
-      .then(r => setMasterminds(r.data))
-      .catch(console.error);
-  }, []);
+  axios.get(
+    `${API}/api/rings/stats`,
+    {
+      headers: {
+        "ngrok-skip-browser-warning": "true"
+      }
+    }
+  )
+    .then(r => setStats(r.data))
+    .catch(console.error);
+
+  axios.get(
+    `${API}/api/masterminds`,
+    {
+      headers: {
+        "ngrok-skip-browser-warning": "true"
+      }
+    }
+  )
+    .then(r => setMasterminds(r.data))
+    .catch(console.error);
+
+}, []);
 
   const downloadReport = async (ringId) => {
     try {

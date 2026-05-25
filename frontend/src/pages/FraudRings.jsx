@@ -175,7 +175,14 @@ export default function FraudRings() {
 
   // ── fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    axios.get(`${API}/api/rings`)
+    axios.get(
+  `${API}/api/rings`,
+  {
+    headers: {
+      "ngrok-skip-browser-warning": "true"
+    }
+  }
+)
       .then(res => { setRings(res.data); setLoading(false); })
       .catch(err => { console.error(err); setError("Failed to load rings."); setLoading(false); });
   }, []);
