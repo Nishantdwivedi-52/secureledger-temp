@@ -175,7 +175,7 @@ async def live_ws_endpoint(websocket: "WebSocket") -> None:
 
     Frontend connection example (JavaScript):
 
-        const ws = new WebSocket("ws://localhost:8000/ws/live-transactions");
+        const ws = new WebSocket("wss://lesser-grandkid-oxymoron.ngrok-free.dev/ws/live-transactions");
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.type === "transaction") showAlert(data);

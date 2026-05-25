@@ -18,7 +18,8 @@ import LiveAlertBanner     from "../components/LiveAlertBanner";
 import ExplainabilityPanel from "../components/ExplainabilityPanel";
 import Navbar              from "../components/Navbar";
 
-const API = "http://127.0.0.1:8000";
+const API =
+"https://lesser-grandkid-oxymoron.ngrok-free.dev";
 
 // ─── small helpers ─────────────────────────────────────────────────────────────
 

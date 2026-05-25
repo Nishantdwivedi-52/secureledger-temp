@@ -11,9 +11,12 @@ const RiskTable = () => {
 
   useEffect(() => {
     // FIX: Updated to 127.0.0.1:8000 to hit your running Python server
+    const API =
+     "https://lesser-grandkid-oxymoron.ngrok-free.dev";
+
     const url = searchTerm 
-      ? `http://127.0.0.1:8000/api/risk/top?search=${searchTerm}`
-      : `http://127.0.0.1:8000/api/risk/top?limit=20`;
+     ? `${API}/api/risk/top?search=${searchTerm}`
+     : `${API}/api/risk/top?limit=20`;
 
     fetch(url)
       .then(res => res.json())
