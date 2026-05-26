@@ -78,7 +78,14 @@ export default function Investigator() {
 
   const downloadReport = async (ringId) => {
     try {
-      const r   = await fetch(`${API}/api/report/${ringId}`);
+      const r = await fetch(
+  `${API}/api/report/${ringId}`,
+  {
+    headers: {
+      "ngrok-skip-browser-warning": "true"
+    }
+  }
+); 
       const txt = await r.text();
       const a   = Object.assign(document.createElement("a"), {
         href:     URL.createObjectURL(new Blob([txt], { type: "text/plain" })),
@@ -91,7 +98,14 @@ export default function Investigator() {
   const loadTimeline = async (ringId) => {
     try {
       setActiveRingId(ringId);
-      const r = await fetch(`${API}/api/timeline/${ringId}`);
+      const r = await fetch(
+  `${API}/api/timeline/${ringId}`,
+  {
+    headers: {
+      "ngrok-skip-browser-warning": "true"
+    }
+  }
+);
       setTimelineData(await r.json());
     } catch (e) { console.error(e); }
   };
