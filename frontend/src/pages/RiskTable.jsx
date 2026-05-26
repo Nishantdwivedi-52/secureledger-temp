@@ -18,7 +18,11 @@ const RiskTable = () => {
      ? `${API}/api/risk/top?search=${searchTerm}`
      : `${API}/api/risk/top?limit=20`;
 
-    fetch(url)
+    fetch(url, {
+  headers: {
+    "ngrok-skip-browser-warning": "true"
+  }
+})
       .then(res => res.json())
       .then(data => setAccounts(data))
       .catch(err => console.error("Error fetching data:", err));

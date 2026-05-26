@@ -347,12 +347,31 @@ export default function Dashboard() {
   useEffect(() => {
     setLoading(true);
 
-    Promise.allSettled([
-      fetch(`${API}/api/stats`).then(r => r.json()),
-      fetch(`${API}/api/dashboard/stats`).then(r => r.json()),
-      fetch(`${API}/api/risk/top?limit=5`).then(r => r.json()),
-      fetch(`${API}/api/risk/top?limit=200`).then(r => r.json()),   // for chart
-    ]).then(([global, dash, top5, all]) => {
+   Promise.allSettled([
+  fetch(`${API}/api/stats`, {
+    headers: {
+      "ngrok-skip-browser-warning": "true"
+    }
+  }).then(r => r.json()),
+
+  fetch(`${API}/api/dashboard/stats`, {
+    headers: {
+      "ngrok-skip-browser-warning": "true"
+    }
+  }).then(r => r.json()),
+
+  fetch(`${API}/api/risk/top?limit=5`, {
+    headers: {
+      "ngrok-skip-browser-warning": "true"
+    }
+  }).then(r => r.json()),
+
+  fetch(`${API}/api/risk/top?limit=200`, {
+    headers: {
+      "ngrok-skip-browser-warning": "true"
+    }
+  }).then(r => r.json()),
+]).then(([global, dash, top5, all]) => {
       if (global.status === "fulfilled") setGlobalStats(global.value);
       if (dash.status   === "fulfilled") setDashStats(dash.value);
       if (top5.status   === "fulfilled") setTopAccounts(top5.value);
