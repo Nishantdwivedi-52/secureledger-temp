@@ -15,8 +15,7 @@ import { useEffect, useState, useRef } from "react";
 import Navbar   from "../components/Navbar";
 import RiskCard from "../components/RiskCard";
 
-const API =
-"https://lesser-grandkid-oxymoron.ngrok-free.dev";
+const API = "http://127.0.0.1:8000";
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ANOMALY DISTRIBUTION CHART

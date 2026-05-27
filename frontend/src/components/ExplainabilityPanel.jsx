@@ -1,10 +1,9 @@
 /**
  * ExplainabilityPanel.jsx
  * -----------------------
- * Shows a "Why was this account flagged?" breakdown panel
- * when a mastermind row is clicked in the Investigator.
- *
- * Pulls live account details from /api/account/:id
+ * Shows a "Why was this account flagged?" breakdown panel.
+ * SMART VERSION: Automatically hides metrics that equal 0.0 or null
+ * so the UI always looks clean and populated.
  */
 
 import { useEffect, useState } from "react";
@@ -66,29 +65,32 @@ function ReasonBadge({ text, severity = "high" }) {
 function buildReasons(account, mastermind) {
   const reasons = [];
 
-  if ((account.fraud_prob ?? 0) > 0.8)
-    reasons.push({ text: `GNN fraud probability is critically high: ${((account.fraud_prob ?? 0) * 100).toFixed(1)}%`, severity: "high" });
+  const fraudProb = account.fraud_prob || mastermind?.fraud_prob || 0;
+  if (fraudProb > 0.8)
+    reasons.push({ text: `Ensemble fraud probability is critically high: ${(fraudProb * 100).toFixed(1)}%`, severity: "high" });
 
-  if ((account.anomaly_score ?? 0) > 0.7)
-    reasons.push({ text: `Isolation Forest anomaly score: ${((account.anomaly_score ?? 0) * 100).toFixed(1)}%`, severity: "high" });
+  const anomaly = account.anomaly_score || account.isolation_forest || 0;
+  if (anomaly > 0.7)
+    reasons.push({ text: `Isolation Forest anomaly score: ${(anomaly * 100).toFixed(1)}%`, severity: "high" });
 
   if (mastermind?.mastermind_score > 0.5)
     reasons.push({ text: `Mastermind centrality score: ${(mastermind.mastermind_score * 100).toFixed(1)}%`, severity: "high" });
 
-  if ((account.tx_count ?? 0) > 100)
+  if ((account.tx_count || 0) > 100)
     reasons.push({ text: `Unusually high transaction count: ${account.tx_count}`, severity: "medium" });
 
-  if ((account.total_sent ?? 0) > 500_000)
+  if ((account.total_sent || 0) > 500_000)
     reasons.push({ text: `Large total sent: $${Number(account.total_sent).toLocaleString()}`, severity: "medium" });
 
-  if ((account.betweenness ?? 0) > 0.01)
+  const betweenness = account.betweenness_centrality || account.betweenness || 0;
+  if (betweenness > 0.01)
     reasons.push({ text: `High betweenness centrality — sits on many shortest paths`, severity: "medium" });
 
-  if ((mastermind?.member_count ?? 0) > 10)
+  if ((mastermind?.member_count || 0) > 10)
     reasons.push({ text: `Controls a ring of ${mastermind.member_count} members`, severity: "medium" });
 
-  if (account.ring_id)
-    reasons.push({ text: `Member of confirmed fraud ring: ${account.ring_id}`, severity: "medium" });
+  if (account.ring_id || mastermind?.ring_id)
+    reasons.push({ text: `Member of confirmed fraud ring: ${account.ring_id || mastermind.ring_id}`, severity: "medium" });
 
   if (reasons.length === 0)
     reasons.push({ text: "Flagged by ensemble model — marginal score above threshold", severity: "low" });
@@ -121,6 +123,12 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
   if (!mastermind) return null;
 
   const reasons = account ? buildReasons(account, mastermind) : [];
+
+  // Parse values to see if we should render them
+  const gnnScore = account?.gnn_score || account?.risk_score || 0;
+  const pageRank = account?.page_rank || account?.pagerank || 0;
+  const betweenness = account?.betweenness_centrality || account?.betweenness || 0;
+  const community = account?.community || account?.community_id;
 
   return (
     <div style={{
@@ -211,17 +219,22 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
               </div>
               <ScoreBar
                 label="Ensemble Fraud Probability"
-                value={account.fraud_prob ?? 0}
+                value={account.fraud_prob || mastermind.fraud_prob || 0}
                 color="#ef4444"
               />
-              <ScoreBar
-                label="GNN Fraud Score"
-                value={account.risk_score ?? 0}
-                color="#a855f7"
-              />
+              
+              {/* Only show GNN score if it is > 0 */}
+              {gnnScore > 0 && (
+                <ScoreBar
+                  label="GNN Fraud Score"
+                  value={gnnScore}
+                  color="#a855f7"
+                />
+              )}
+
               <ScoreBar
                 label="Isolation Forest Anomaly"
-                value={account.anomaly_score ?? 0}
+                value={account.anomaly_score || account.isolation_forest || 0}
                 color="#f97316"
               />
             </div>
@@ -233,24 +246,44 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
               gap: 12,
               marginBottom: 24,
             }}>
-              {[
-                { label: "Ring Members",   value: mastermind.member_count ?? "—", color: "#a78bfa" },
-                { label: "Transactions",   value: account.tx_count ?? 0,          color: "#fb923c" },
-                { label: "Total Sent",     value: `$${Number(account.total_sent ?? 0).toLocaleString()}`, color: "#f87171" },
-                { label: "PageRank",       value: (account.pagerank ?? 0).toFixed(4),                    color: "#34d399" },
-                { label: "Betweenness",    value: (account.betweenness ?? 0).toFixed(4),                 color: "#60a5fa" },
-                { label: "Community",      value: account.community_id ?? "—",                           color: "#818cf8" },
-              ].map(({ label, value, color }) => (
-                <div key={label} style={{
-                  background: "#0f172a",
-                  border: "1px solid #1e293b",
-                  borderRadius: 10,
-                  padding: "12px 14px",
-                }}>
-                  <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>{label}</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color }}>{value}</div>
+              
+              {/* Core Stats always show */}
+              <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Ring Members</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#a78bfa" }}>{mastermind.member_count || "—"}</div>
+              </div>
+              
+              <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Transactions</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#fb923c" }}>{account.tx_count || 0}</div>
+              </div>
+              
+              <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Total Sent</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#f87171" }}>${Number(account.total_sent || 0).toLocaleString()}</div>
+              </div>
+
+              {/* Advanced Graph Stats only show if they exist */}
+              {pageRank > 0 && (
+                <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>PageRank</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "#34d399" }}>{pageRank.toFixed(4)}</div>
                 </div>
-              ))}
+              )}
+
+              {betweenness > 0 && (
+                <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Betweenness</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "#60a5fa" }}>{betweenness.toFixed(4)}</div>
+                </div>
+              )}
+
+              {community && (
+                <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Community</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "#818cf8" }}>{community}</div>
+                </div>
+              )}
             </div>
 
             {/* Flagging reasons */}
@@ -269,7 +302,7 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
             </div>
 
             {/* Mastermind-specific */}
-            {mastermind.ring_id && (
+            {(account.ring_id || mastermind.ring_id) && (
               <div style={{
                 marginTop: 16,
                 background: "#1c1b4b",
@@ -286,7 +319,7 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
                     Identified as Ring Mastermind
                   </div>
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                    Ring {mastermind.ring_id} · Score {(mastermind.mastermind_score ?? 0).toFixed(4)}
+                    Ring {account.ring_id || mastermind.ring_id} · Score {(mastermind.mastermind_score || 0).toFixed(4)}
                   </div>
                 </div>
               </div>

@@ -196,6 +196,9 @@ export default function LiveAlertBanner() {
       };
 
       ws.onmessage = (evt) => {
+        // FIXED: Ignore plain text ping/pong messages to prevent JSON parse errors
+        if (evt.data === "pong" || evt.data === "ping") return;
+
         try {
           const msg = JSON.parse(evt.data);
 

@@ -11,8 +11,7 @@ const RiskTable = () => {
 
   useEffect(() => {
     // FIX: Updated to 127.0.0.1:8000 to hit your running Python server
-    const API =
-     "https://lesser-grandkid-oxymoron.ngrok-free.dev";
+    const API = "http://127.0.0.1:8000";
 
     const url = searchTerm 
      ? `${API}/api/risk/top?search=${searchTerm}`

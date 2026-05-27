@@ -1,30 +1,23 @@
 /**
  * FraudRings.jsx
  * --------------
- * Displays all detected fraud rings with colour-coded badges,
- * expandable detail rows, ring size, fraud edge counts, and
- * links through to the Investigator for deep dives.
- *
- * API: GET /api/rings  (ml/rings.json via FastAPI)
+ * Displays detected fraud rings. 
+ * FIXED: Pointed to /api/masterminds to get the grouped clusters 
+ * instead of the 40,000+ raw accounts.
  */
 
-import { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import { useEffect, useState, useMemo } from "react";
+import { api } from "../api";
 import Navbar from "../components/Navbar";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-const API =
-"https://lesser-grandkid-oxymoron.ngrok-free.dev";
-
-/** Map ring size → colour scheme */
 function ringSizeVariant(size) {
-  if (size >= 20) return { bg: "#450a0a", border: "#ef4444", text: "#fca5a5", label: "LARGE"  };
-  if (size >= 10) return { bg: "#431407", border: "#f97316", text: "#fdba74", label: "MEDIUM" };
-  return           { bg: "#1c1917", border: "#78716c", text: "#d6d3d1", label: "SMALL"  };
+  if (size >= 10) return { bg: "#450a0a", border: "#ef4444", text: "#fca5a5", label: "LARGE"  };
+  if (size >= 5)  return { bg: "#431407", border: "#f97316", text: "#fdba74", label: "MEDIUM" };
+  return          { bg: "#1c1917", border: "#78716c", text: "#d6d3d1", label: "SMALL"  };
 }
 
-/** Map fraud probability → badge colour */
 function fraudBadgeStyle(prob) {
   if (prob >= 0.8) return { background: "#7f1d1d", color: "#fca5a5", border: "1px solid #ef4444" };
   if (prob >= 0.5) return { background: "#431407", color: "#fdba74", border: "1px solid #f97316" };
@@ -50,9 +43,6 @@ function Badge({ children, style }) {
 // ─── expanded ring detail panel ───────────────────────────────────────────────
 
 function RingDetailPanel({ ring }) {
-  const members = ring.nodes || ring.members || [];
-  const edges   = ring.edges || ring.links  || [];
-
   return (
     <div style={{
       background: "#0f172a",
@@ -61,13 +51,12 @@ function RingDetailPanel({ ring }) {
       padding: "20px 24px",
       marginTop: 8,
     }}>
-      {/* Two-column summary */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16, marginBottom: 20 }}>
         {[
-          { label: "Ring ID",       value: ring.ring_id,                          color: "#a78bfa" },
-          { label: "Mastermind",    value: (ring.mastermind || "—").slice(0, 14) + "…", color: "#f472b6" },
-          { label: "Members",       value: members.length,                        color: "#fb923c" },
-          { label: "Fraud Edges",   value: edges.filter(e => e.is_laundering || e.fraud).length || edges.length, color: "#f87171" },
+          { label: "Ring ID",       value: ring.ring_id,                                      color: "#a78bfa" },
+          { label: "Mastermind",    value: (ring.id || "—").slice(0, 14) + "…",               color: "#f472b6" },
+          { label: "Members",       value: ring.member_count ?? 0,                            color: "#fb923c" },
+          { label: "Network Score", value: (ring.mastermind_score ?? 0).toFixed(3),           color: "#f87171" },
         ].map(({ label, value, color }) => (
           <div key={label} style={{
             background: "#1e293b",
@@ -80,45 +69,6 @@ function RingDetailPanel({ ring }) {
         ))}
       </div>
 
-      {/* Member list */}
-      {members.length > 0 && (
-        <>
-          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: 600 }}>
-            RING MEMBERS
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {members.slice(0, 30).map((m, i) => {
-              const id    = typeof m === "string" ? m : m.id;
-              const prob  = typeof m === "object" ? m.fraud_prob : null;
-              return (
-                <span key={i} style={{
-                  background: "#1e293b",
-                  border: "1px solid #334155",
-                  borderRadius: 8,
-                  padding: "4px 10px",
-                  fontSize: 12,
-                  color: "#94a3b8",
-                  fontFamily: "monospace",
-                }}>
-                  {id?.slice(0, 10)}…
-                  {prob != null && (
-                    <span style={{ color: "#f87171", marginLeft: 4 }}>
-                      {(prob * 100).toFixed(0)}%
-                    </span>
-                  )}
-                </span>
-              );
-            })}
-            {members.length > 30 && (
-              <span style={{ color: "#475569", fontSize: 12, alignSelf: "center" }}>
-                +{members.length - 30} more
-              </span>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Action buttons */}
       <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
         <a
           href={`/investigator`}
@@ -137,13 +87,17 @@ function RingDetailPanel({ ring }) {
         </a>
         <button
           onClick={async () => {
-            const r = await fetch(`${API}/api/report/${ring.ring_id}`);
-            const txt = await r.text();
-            const a = Object.assign(document.createElement("a"), {
-              href: URL.createObjectURL(new Blob([txt], { type: "text/plain" })),
-              download: `${ring.ring_id}_STR.txt`,
-            });
-            a.click();
+            try {
+              const r = await api.get(`/api/report/${ring.ring_id}`);
+              const txt = typeof r.data === 'string' ? r.data : JSON.stringify(r.data, null, 2);
+              const a = Object.assign(document.createElement("a"), {
+                href: URL.createObjectURL(new Blob([txt], { type: "text/plain" })),
+                download: `${ring.ring_id}_STR.txt`,
+              });
+              a.click();
+            } catch (error) {
+              console.error("Failed to download report", error);
+            }
           }}
           style={{
             background: "#1e293b",
@@ -171,39 +125,38 @@ export default function FraudRings() {
   const [error,      setError]      = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [search,     setSearch]     = useState("");
-  const [sortBy,     setSortBy]     = useState("size"); // size | fraud_prob | ring_id
+  const [sortBy,     setSortBy]     = useState("size");
 
   // ── fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    axios.get(
-  `${API}/api/rings`,
-  {
-    headers: {
-      "ngrok-skip-browser-warning": "true"
-    }
-  }
-)
-      .then(res => { setRings(res.data); setLoading(false); })
-      .catch(err => { console.error(err); setError("Failed to load rings."); setLoading(false); });
+    // 💥 FIXED: Fetch from masterminds to get the grouped clusters, not raw nodes
+    api.get('/api/masterminds')
+      .then(res => { 
+        setRings(res.data || []); 
+        setLoading(false); 
+      })
+      .catch(err => { 
+        console.error(err); 
+        setError("Failed to load rings."); 
+        setLoading(false); 
+      });
   }, []);
 
-  // ── derived list ───────────────────────────────────────────────────────────
-  const displayRings = useCallback(() => {
+  // ── derived list ────────────────────────────────────────────────────────────
+  const displayedRings = useMemo(() => {
     let list = [...rings];
 
-    // Search filter
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(r =>
         r.ring_id?.toLowerCase().includes(q) ||
-        r.mastermind?.toLowerCase().includes(q)
+        r.id?.toLowerCase().includes(q)
       );
     }
 
-    // Sort
     list.sort((a, b) => {
-      if (sortBy === "size")       return (b.nodes?.length ?? 0) - (a.nodes?.length ?? 0);
-      if (sortBy === "fraud_prob") return (b.fraud_prob ?? 0)    - (a.fraud_prob ?? 0);
+      if (sortBy === "size")       return (b.member_count ?? 0) - (a.member_count ?? 0);
+      if (sortBy === "fraud_prob") return (b.fraud_prob ?? 0)   - (a.fraud_prob ?? 0);
       return (a.ring_id ?? "").localeCompare(b.ring_id ?? "");
     });
 
@@ -217,7 +170,6 @@ export default function FraudRings() {
 
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 24px" }}>
 
-        {/* ── Header ── */}
         <div style={{ marginBottom: 32 }}>
           <h1 style={{
             fontSize: 40,
@@ -238,9 +190,9 @@ export default function FraudRings() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 32 }}>
           {[
             { label: "Total Rings",      value: rings.length,                                                color: "#a78bfa" },
-            { label: "Total Members",    value: rings.reduce((s,r) => s + (r.nodes?.length ?? 0), 0),       color: "#fb923c" },
-            { label: "Large Rings (20+)",value: rings.filter(r => (r.nodes?.length ?? 0) >= 20).length,     color: "#f87171" },
-            { label: "Avg Ring Size",    value: rings.length ? (rings.reduce((s,r) => s + (r.nodes?.length ?? 0), 0) / rings.length).toFixed(1) : 0, color: "#34d399" },
+            { label: "Total Members",    value: rings.reduce((s,r) => s + (r.member_count ?? 0), 0),         color: "#fb923c" },
+            { label: "Large Rings (10+)",value: rings.filter(r => (r.member_count ?? 0) >= 10).length,       color: "#f87171" },
+            { label: "Avg Ring Size",    value: rings.length ? (rings.reduce((s,r) => s + (r.member_count ?? 0), 0) / rings.length).toFixed(1) : 0, color: "#34d399" },
           ].map(({ label, value, color }) => (
             <div key={label} style={{
               background: "#0f172a",
@@ -291,7 +243,6 @@ export default function FraudRings() {
           ))}
         </div>
 
-        {/* ── State: loading / error / empty ── */}
         {loading && (
           <div style={{ textAlign: "center", padding: 80, color: "#475569" }}>
             <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
@@ -311,18 +262,18 @@ export default function FraudRings() {
         {/* ── Ring rows ── */}
         {!loading && !error && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {displayRings().length === 0 && (
+            {displayedRings.length === 0 && (
               <div style={{ textAlign: "center", padding: 60, color: "#475569" }}>
                 No fraud rings match your search.
               </div>
             )}
 
-            {displayRings().map(ring => {
-              const size      = ring.nodes?.length ?? 0;
+            {displayedRings.map(ring => {
+              const size      = ring.member_count ?? 0;
               const variant   = ringSizeVariant(size);
-              const fraudProb = ring.fraud_prob ?? ring.mastermind_score ?? 0;
+              const fraudProb = ring.fraud_prob ?? 0;
+              const score     = ring.mastermind_score ?? 0;
               const isOpen    = expandedId === ring.ring_id;
-              const edgeCount = (ring.edges || ring.links || []).length;
 
               return (
                 <div key={ring.ring_id}>
@@ -354,7 +305,7 @@ export default function FraudRings() {
                     <div>
                       <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>MASTERMIND</div>
                       <div style={{ fontFamily: "monospace", color: "#f472b6", fontSize: 12 }}>
-                        {(ring.mastermind || "—").slice(0, 18)}…
+                        {(ring.id || "—").slice(0, 18)}…
                       </div>
                     </div>
 
@@ -366,10 +317,10 @@ export default function FraudRings() {
                       </Badge>
                     </div>
 
-                    {/* Fraud edges */}
+                    {/* Network Score */}
                     <div>
-                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>FRAUD EDGES</div>
-                      <div style={{ fontWeight: 700, color: "#f87171" }}>{edgeCount}</div>
+                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>NETWORK SCORE</div>
+                      <div style={{ fontWeight: 700, color: "#f87171" }}>{score.toFixed(3)}</div>
                     </div>
 
                     {/* Fraud probability */}
