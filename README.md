@@ -333,7 +333,7 @@ Severe class imbalance handled via **Graph-SMOTE** — 5× synthetic fraud nodes
 | Nishant Kumar | Backend API, WebSocket integration |
 | Shambhavi Singh | Frontend dashboard, documentation |
 
-*K J Somaiya School of Engineering*
+
 
 ---
 
