@@ -14,8 +14,8 @@ This project addresses the **AML & Financial Fraud Detection** problem statement
 
 ## Live Demo
 
- **Demo Video:** *(add link here)*  
- **Live App:** Run locally using instructions below.
+ **Demo Video:** *https://youtu.be/ucQ0u9NIqwA*  
+ **Live App:** https://secure-ledger.moleculesciwriteip.in/.
 
 ---
 
