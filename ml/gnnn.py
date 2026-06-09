@@ -4,7 +4,7 @@ ml/gnnn.py
 SecureLedger — GraphSAGE Fraud Detection — Production Training Pipeline
 
 Key improvements over the baseline:
-  1.  Rich node features (8 hand-crafted + Node2Vec embeddings)
+  1.  Rich node features (7 hand-crafted + Node2Vec embeddings)
   2.  Graph-safe SMOTE oversampling on fraud node features
   3.  3-layer GraphSAGE with BatchNorm + residual connections
   4.  Focal Loss + weighted CrossEntropy hybrid
@@ -136,18 +136,16 @@ def load_fraud_ids(driver) -> set:
 
 def load_rich_features(driver, id2idx: dict) -> np.ndarray:
     """
-    Pull 8 hand-crafted features per account from Neo4j:
+    Pull 7 hand-crafted features per account from Neo4j:
       0  tx_count_out          — total outbound transactions
       1  tx_count_in           — total inbound transactions
       2  avg_amount_sent       — mean outbound amount
       3  avg_amount_received   — mean inbound amount
       4  out_degree            — distinct outbound counterparties
       5  in_degree             — distinct inbound counterparties
-      6  fraud_tx_ratio        — fraction of transactions flagged
-      7  active_days           — days between first and last transaction
+      6  active_days           — days between first and last transaction
 
-    Returns an (N, 8) float32 array aligned to id2idx ordering.
-    All values are Min-Max normalised.
+    Returns an (N, 7) float32 array aligned to id2idx ordering.
     """
     logger.info("Loading rich node features from Neo4j…")
 
@@ -157,23 +155,15 @@ def load_rich_features(driver, id2idx: dict) -> np.ndarray:
     WITH a,
          count(out)                                               AS tx_out,
          coalesce(avg(out.amount_paid), 0)                       AS avg_sent,
-         count(CASE WHEN out.is_laundering = 1 THEN 1 END)       AS fraud_out,
          count(DISTINCT out.__endNode)                           AS out_deg
     OPTIONAL MATCH (a)<-[inn:TRANSACTION]-()
-    WITH a, tx_out, avg_sent, fraud_out, out_deg,
+    WITH a, tx_out, avg_sent, out_deg,
          count(inn)                                              AS tx_in,
          coalesce(avg(inn.amount_paid), 0)                       AS avg_recv,
-         count(CASE WHEN inn.is_laundering = 1 THEN 1 END)       AS fraud_in,
          count(DISTINCT inn.__startNode)                         AS in_deg
-    WITH a, tx_out, avg_sent, fraud_out, out_deg,
-             tx_in,  avg_recv,  fraud_in,  in_deg,
-         CASE WHEN (tx_out + tx_in) > 0
-              THEN toFloat(fraud_out + fraud_in) / (tx_out + tx_in)
-              ELSE 0.0 END                                       AS fraud_ratio
     OPTIONAL MATCH (a)-[t2:TRANSACTION]-()
     WITH a, tx_out, avg_sent, out_deg,
              tx_in,  avg_recv,  in_deg,
-             fraud_ratio,
          min(t2.timestamp) AS first_ts,
          max(t2.timestamp) AS last_ts
     RETURN
@@ -184,7 +174,6 @@ def load_rich_features(driver, id2idx: dict) -> np.ndarray:
         avg_recv      AS avg_amount_received,
         out_deg       AS out_degree,
         in_deg        AS in_degree,
-        fraud_ratio   AS fraud_tx_ratio,
         // Active days: difference between first/last transaction timestamps
         // Timestamps stored as epoch seconds; fall back to 0 if missing
         CASE WHEN first_ts IS NOT NULL AND last_ts IS NOT NULL
@@ -193,7 +182,7 @@ def load_rich_features(driver, id2idx: dict) -> np.ndarray:
     """
 
     n = len(id2idx)
-    features = np.zeros((n, 8), dtype=np.float32)
+    features = np.zeros((n, 7), dtype=np.float32)
 
     with driver.session() as session:
         results = session.run(query).data()
@@ -211,16 +200,12 @@ def load_rich_features(driver, id2idx: dict) -> np.ndarray:
             float(row["avg_amount_received"]  or 0),
             float(row["out_degree"]           or 0),
             float(row["in_degree"]            or 0),
-            float(row["fraud_tx_ratio"]       or 0),
             float(row["active_days"]          or 0),
         ]
         found += 1
 
     logger.info("Rich features loaded for %d / %d accounts.", found, n)
 
-    # Normalise each column independently
-    scaler = MinMaxScaler()
-    features = scaler.fit_transform(features).astype(np.float32)
     return features
 
 
@@ -233,23 +218,24 @@ def build_features(
     rich_features: np.ndarray,
     edge_index: Tensor,
     num_nodes: int,
+    train_idx: np.ndarray,
 ) -> np.ndarray:
     """
     Concatenate all feature sources into one matrix:
       - Node2Vec embeddings  (64-dim)
-      - Rich hand-crafted    (8-dim)
+      - Rich hand-crafted    (7-dim)
       - Normalised out-degree (1-dim, from edge_index)
       - Normalised in-degree  (1-dim, from edge_index)
 
-    Final shape: (N, 74)
+    Final shape: (N, 73)
     """
     # Degree features from edge_index (faster than a second Neo4j round-trip)
-    out_deg = torch.bincount(edge_index[0], minlength=num_nodes).float()
-    in_deg  = torch.bincount(edge_index[1], minlength=num_nodes).float()
+    out_deg = torch.bincount(edge_index[0], minlength=num_nodes).float().numpy().reshape(-1, 1)
+    in_deg  = torch.bincount(edge_index[1], minlength=num_nodes).float().numpy().reshape(-1, 1)
 
-    # Normalise to [0, 1]
-    out_deg = (out_deg / (out_deg.max() + 1e-8)).numpy().reshape(-1, 1)
-    in_deg  = (in_deg  / (in_deg.max()  + 1e-8)).numpy().reshape(-1, 1)
+    # Normalise to [0, 1] using training set max to avoid data leakage
+    out_deg = out_deg / (out_deg[train_idx].max() + 1e-8)
+    in_deg  = in_deg  / (in_deg[train_idx].max()  + 1e-8)
 
     combined = np.concatenate(
         [embeddings, rich_features, out_deg, in_deg], axis=1
@@ -562,12 +548,11 @@ def main() -> None:
         total_fraud, total_nodes, 100 * total_fraud / total_nodes,
     )
 
-    # ── 3. Build rich feature matrix ───────────────────────────────────────────
-    logger.info("\n[3/10] Building rich node feature matrix…")
+    # ── 3. Load basic features ─────────────────────────────────────────────────
+    logger.info("\n[3/10] Loading rich node features from Neo4j…")
 
     rich_feats  = load_rich_features(driver, data.id2idx)
     edge_np     = data.edge_index.numpy()
-    all_features = build_features(embeddings, rich_feats, data.edge_index, data.num_nodes)
 
     # ── 4. Stratified train/test split ─────────────────────────────────────────
     logger.info("\n[4/10] Stratified train/test split (80/20)…")
@@ -591,6 +576,16 @@ def main() -> None:
         "  Train: %d nodes, %d fraud | Test: %d nodes, %d fraud",
         len(train_idx), train_fraud, len(test_idx), test_fraud,
     )
+
+    # ── 4b. Feature Normalisation ──────────────────────────────────────────────
+    logger.info("\n[4b/10] Normalising rich features & building complete feature matrix…")
+    
+    # Normalise rich features fit ONLY on train set to prevent leakage
+    scaler = MinMaxScaler()
+    rich_feats[train_idx] = scaler.fit_transform(rich_feats[train_idx])
+    rich_feats[test_idx]  = scaler.transform(rich_feats[test_idx])
+
+    all_features = build_features(embeddings, rich_feats, data.edge_index, data.num_nodes, train_idx)
 
     # ── 5. Graph-safe SMOTE on training nodes only ─────────────────────────────
     logger.info("\n[5/10] Applying Graph-SMOTE to training set…")
