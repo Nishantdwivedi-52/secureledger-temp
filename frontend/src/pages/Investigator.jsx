@@ -12,6 +12,7 @@ import RingGraph           from "../components/RingGraph";
 import LiveAlertBanner     from "../components/LiveAlertBanner";
 import ExplainabilityPanel from "../components/ExplainabilityPanel";
 import Navbar              from "../components/Navbar";
+import FundFlowTracer      from "../components/FundFlowTracer";
 
 // ─── small helpers ─────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export default function Investigator() {
   const [timelineData,setTimelineData]= useState([]);
   const [activeRingId,setActiveRingId]= useState(null);
   const [explainTarget, setExplainTarget] = useState(null);
+  const [flowAccount, setFlowAccount] = useState(null);
 
   // ── API calls ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -139,7 +141,7 @@ export default function Investigator() {
                   return (
                     <tr 
                       key={idx} 
-                      onClick={() => setExplainTarget(m)} 
+                      onClick={() => { setExplainTarget(m); setFlowAccount(m.id); }} 
                       style={{ cursor: "pointer", borderBottom: "1px solid #E2E8F0", transition: "background 0.2s" }}
                       onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
@@ -192,6 +194,20 @@ export default function Investigator() {
             <h2 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: 0 }}>Fraud Ring Network</h2>
           </div>
           <RingGraph />
+        </div>
+
+        {/* Fund Flow Tracer Section */}
+        <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: "28px 32px", marginBottom: 48, boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+            <div style={{ width: 20, height: 20, background: "linear-gradient(135deg, #01B8AA, #0EA5E9)", borderRadius: 4 }} />
+            <h2 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: 0 }}>Fund Flow Tracer</h2>
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: "#01B8AA",
+              background: "#F0FDFA", border: "1px solid #01B8AA",
+              padding: "2px 8px", borderRadius: 6, letterSpacing: "0.05em",
+            }}>TEMPORAL BFS</span>
+          </div>
+          <FundFlowTracer prefilledAccount={flowAccount} />
         </div>
 
         {/* Timeline Section */}

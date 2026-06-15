@@ -28,7 +28,8 @@ from graph.graph_queries import (
     get_ring_stats,
     get_ring_graph,
     get_ring_transactions,
-    get_top_masterminds
+    get_top_masterminds,
+    get_fund_flow_paths,
 )
 from ml.evidence import (
     generate_evidence,
@@ -289,6 +290,41 @@ def ring_detail(ring_id: str):
 @app.get("/api/graph/circular-flows", tags=["Graph Analytics"])
 def circular_flows():
     return detect_circular_flows()
+
+
+@app.get("/api/account/{account_id}/flow", tags=["Graph Analytics"])
+def fund_flow_paths(
+    account_id: str,
+    depth: int = 3,
+    direction: str = "outbound",
+    max_paths: int = 20,
+):
+    """
+    Trace money-flow paths from/to an account with temporal ordering.
+
+    Returns ordered paths where each hop's timestamp is >= the previous hop.
+    Paths are ranked by composite risk score (descending).
+
+    Query params:
+        depth:     1–5 (default 3)
+        direction: outbound | inbound | both
+        max_paths: 1–50 (default 20)
+    """
+    # Clamp inputs
+    depth = max(1, min(depth, 5))
+    max_paths = max(1, min(max_paths, 50))
+    if direction not in ("outbound", "inbound", "both"):
+        raise HTTPException(status_code=400, detail="direction must be 'outbound', 'inbound', or 'both'")
+
+    result = get_fund_flow_paths(account_id, depth, direction, max_paths)
+
+    if not result.get("paths") and not result.get("error"):
+        # Check if account exists at all
+        details = get_account_details(account_id)
+        if details is None:
+            raise HTTPException(status_code=404, detail=f"Account '{account_id}' not found.")
+
+    return result
 
 
 @app.get("/api/graph/mule-accounts", tags=["Graph Analytics"])

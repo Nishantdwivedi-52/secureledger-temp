@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any
 
 from neo4j import GraphDatabase
@@ -504,6 +505,346 @@ def get_subgraph(account_id: str) -> dict:
     except RuntimeError as exc:
         logger.error("get_subgraph(%s) failed: %s", account_id, exc)
         return {"nodes": [], "links": [], "error": str(exc)}
+
+
+# ================================================
+# FUND FLOW TRACER — TEMPORAL PATH DISCOVERY
+# ================================================
+#
+# Returns ordered money-flow paths with temporal
+# enforcement (t1 ≤ t2 ≤ t3) and per-path risk scoring.
+#
+# Design:
+#   Phase 1 — Cypher collects candidate simple-paths
+#             (no repeated nodes) with a hard LIMIT.
+#   Phase 2 — Python filters for temporal monotonicity,
+#             computes amounts and risk scores, and
+#             returns ranked results.
+#
+# Neo4j does NOT support parameterised variable-length
+# patterns (*1..$depth), so depth is injected as a
+# clamped integer literal into the Cypher string.
+# ================================================
+
+# Safety caps for path expansion
+_FLOW_MAX_DEPTH        = 5     # absolute max hops
+_FLOW_MAX_CANDIDATE    = 200   # Cypher LIMIT before Python filtering
+_FLOW_MAX_RETURN_PATHS = 50    # max paths in API response
+
+
+def _parse_timestamp(ts_str: str | None) -> datetime | None:
+    """
+    Parse a Neo4j transaction timestamp into a Python datetime.
+
+    Handles both formats found in the database:
+      - Pandas stringified:  "2022-09-01 00:20:00"
+      - ISO 8601 (simulator): "2024-01-15T10:30:00+00:00"
+
+    Returns None if the string is empty or unparseable.
+    """
+    if not ts_str:
+        return None
+    ts_str = str(ts_str).strip()
+    if not ts_str:
+        return None
+
+    # Try common formats in order of likelihood
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",       # pandas default str()
+        "%Y-%m-%dT%H:%M:%S%z",     # ISO with timezone
+        "%Y-%m-%dT%H:%M:%S",       # ISO without timezone
+        "%Y/%m/%d %H:%M",          # raw CSV format
+        "%Y-%m-%d %H:%M",          # truncated pandas
+    ):
+        try:
+            return datetime.strptime(ts_str, fmt)
+        except ValueError:
+            continue
+
+    # Final fallback: fromisoformat (Python 3.11+ handles most variants)
+    try:
+        return datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+    except Exception:
+        logger.debug("Could not parse timestamp: %r", ts_str)
+        return None
+
+
+def _is_temporally_valid(edges: list[dict]) -> bool:
+    """
+    Check that transaction timestamps are monotonically non-decreasing.
+
+    Enforces: t_hop1 ≤ t_hop2 ≤ t_hop3 ≤ ...
+
+    Returns False if any timestamp is unparseable (conservative approach).
+    """
+    if len(edges) <= 1:
+        return True
+
+    timestamps = [_parse_timestamp(e.get("timestamp")) for e in edges]
+
+    # If any timestamp is missing/unparseable, reject the path
+    if any(t is None for t in timestamps):
+        return False
+
+    for i in range(len(timestamps) - 1):
+        # Strip timezone info for comparison if mixed (naive vs aware)
+        t_curr = timestamps[i].replace(tzinfo=None)
+        t_next = timestamps[i + 1].replace(tzinfo=None)
+        if t_curr > t_next:
+            return False
+
+    return True
+
+
+def _compute_path_risk_score(path_nodes: list[dict], path_edges: list[dict]) -> float:
+    """
+    Compute a composite risk score for a single fund-flow path.
+
+    Formula:
+        risk_score = max_fraud_prob
+                   + 0.15 * (laundering_hops / total_hops)
+                   + 0.10 * has_mastermind
+
+    Range: 0.0 – 1.25 (unclamped to allow relative ranking).
+    Higher = more suspicious.
+    """
+    fraud_probs = [_safe_float(n.get("fraud_prob", 0)) for n in path_nodes]
+    max_fp = max(fraud_probs) if fraud_probs else 0.0
+
+    total_hops = len(path_edges)
+    laundering_hops = sum(
+        1 for e in path_edges if e.get("is_laundering")
+    )
+    laundering_ratio = laundering_hops / total_hops if total_hops > 0 else 0.0
+
+    has_mastermind = any(n.get("is_mastermind") for n in path_nodes)
+
+    score = max_fp + (0.15 * laundering_ratio) + (0.10 if has_mastermind else 0.0)
+    return round(score, 4)
+
+
+def _build_flow_cypher(direction: str, depth: int) -> str:
+    """
+    Build a Cypher query string for fund-flow path discovery.
+
+    Neo4j does NOT support parameterised variable-length patterns,
+    so `depth` is injected as a clamped integer literal.
+
+    Args:
+        direction: "outbound" or "inbound"
+        depth:     1–5 (already clamped by caller)
+
+    Returns:
+        A Cypher query string with $account_id and $max_candidates
+        as the only parameters.
+    """
+    # Safety: depth is clamped to [1, _FLOW_MAX_DEPTH] and is always int
+    depth = int(max(1, min(depth, _FLOW_MAX_DEPTH)))
+
+    if direction == "inbound":
+        pattern = (
+            f"MATCH path = (start:Account)"
+            f"-[:TRANSACTION*1..{depth}]->"
+            f"(end:Account {{id: $account_id}})"
+        )
+    else:  # outbound (default)
+        pattern = (
+            f"MATCH path = (start:Account {{id: $account_id}})"
+            f"-[:TRANSACTION*1..{depth}]->"
+            f"(end:Account)"
+        )
+
+    return f"""
+    {pattern}
+    WHERE ALL(n IN nodes(path) WHERE single(x IN nodes(path) WHERE x = n))
+    WITH path,
+         nodes(path)         AS ns,
+         relationships(path) AS rs,
+         length(path)        AS hop_count
+    ORDER BY hop_count ASC
+    LIMIT $max_candidates
+    RETURN
+        [n IN ns | {{
+            account:       n.id,
+            fraud_prob:    n.fraud_prob,
+            ring_id:       n.ring_id,
+            is_mastermind: n.is_mastermind
+        }}] AS path_nodes,
+        [r IN rs | {{
+            from_acc:       startNode(r).id,
+            to_acc:         endNode(r).id,
+            amount:         r.amount_paid,
+            timestamp:      r.timestamp,
+            is_laundering:  r.is_laundering,
+            payment_format: r.payment_format
+        }}] AS path_edges,
+        hop_count
+    """
+
+
+def get_fund_flow_paths(
+    account_id: str,
+    depth: int = 3,
+    direction: str = "outbound",
+    max_paths: int = 20,
+) -> dict:
+    """
+    Trace money-flow paths from/to an account with temporal ordering.
+
+    Returns ordered paths where each hop's timestamp is ≥ the previous
+    hop's timestamp (temporal BFS: t1 ≤ t2 ≤ t3 ≤ ...).
+
+    Paths are ranked by a composite risk score (descending).
+
+    Args:
+        account_id: The origin/destination account ID.
+        depth:      Max hops to traverse (1–5, default 3).
+        direction:  "outbound", "inbound", or "both".
+        max_paths:  Max paths to return after temporal filtering (1–50).
+
+    Returns:
+        {
+          "origin": str,
+          "direction": str,
+          "depth": int,
+          "paths": [...],
+          "path_count": int,
+          "truncated": bool,
+          "candidates_before_filter": int
+        }
+    """
+    # ── Clamp inputs ──────────────────────────────────────────────────────
+    depth     = max(1, min(int(depth), _FLOW_MAX_DEPTH))
+    max_paths = max(1, min(int(max_paths), _FLOW_MAX_RETURN_PATHS))
+
+    valid_directions = ("outbound", "inbound", "both")
+    if direction not in valid_directions:
+        direction = "outbound"
+
+    # ── Determine which directions to query ───────────────────────────────
+    directions_to_query = (
+        ["outbound", "inbound"] if direction == "both"
+        else [direction]
+    )
+
+    all_candidate_paths: list[dict] = []
+
+    try:
+        with _session() as session:
+            for d in directions_to_query:
+                cypher = _build_flow_cypher(d, depth)
+
+                # Hard cap on candidates at Cypher level to prevent
+                # explosion on high-degree hub nodes
+                result = session.run(
+                    cypher,
+                    account_id=account_id,
+                    max_candidates=_FLOW_MAX_CANDIDATE,
+                )
+
+                for record in result:
+                    raw_nodes = record["path_nodes"] or []
+                    raw_edges = record["path_edges"] or []
+                    hop_count = record["hop_count"]
+
+                    # Serialise node data
+                    path_nodes = [
+                        {
+                            "account":       n.get("account", "unknown") if isinstance(n, dict) else str(n),
+                            "fraud_prob":    _safe_float(n.get("fraud_prob", 0) if isinstance(n, dict) else 0),
+                            "ring_id":       n.get("ring_id") if isinstance(n, dict) else None,
+                            "is_mastermind": bool(n.get("is_mastermind", False)) if isinstance(n, dict) else False,
+                        }
+                        for n in raw_nodes
+                    ]
+
+                    # Serialise edge data
+                    path_edges = [
+                        {
+                            "from":           e.get("from_acc", "") if isinstance(e, dict) else "",
+                            "to":             e.get("to_acc",   "") if isinstance(e, dict) else "",
+                            "amount":         _safe_float(e.get("amount", 0) if isinstance(e, dict) else 0),
+                            "timestamp":      str(e.get("timestamp", "") if isinstance(e, dict) else ""),
+                            "is_laundering":  bool(e.get("is_laundering", False)) if isinstance(e, dict) else False,
+                            "payment_format": str(e.get("payment_format", "UNKNOWN") if isinstance(e, dict) else "UNKNOWN"),
+                        }
+                        for e in raw_edges
+                    ]
+
+                    all_candidate_paths.append({
+                        "path_nodes": path_nodes,
+                        "path_edges": path_edges,
+                        "hop_count":  hop_count,
+                        "direction":  d,
+                    })
+
+    except RuntimeError as exc:
+        logger.error("get_fund_flow_paths(%s) failed: %s", account_id, exc)
+        return {
+            "origin":    account_id,
+            "direction": direction,
+            "depth":     depth,
+            "paths":     [],
+            "path_count": 0,
+            "truncated": False,
+            "candidates_before_filter": 0,
+            "error":     str(exc),
+        }
+
+    candidates_total = len(all_candidate_paths)
+
+    # ── Phase 2: Temporal filtering ───────────────────────────────────────
+    valid_paths: list[dict] = []
+
+    for candidate in all_candidate_paths:
+        edges = candidate["path_edges"]
+        nodes = candidate["path_nodes"]
+
+        # Enforce temporal monotonicity: t1 ≤ t2 ≤ t3
+        if not _is_temporally_valid(edges):
+            continue
+
+        # Compute amounts
+        amounts = [e["amount"] for e in edges]
+        total_amount    = round(sum(amounts), 2)
+        terminal_amount = round(amounts[-1], 2) if amounts else 0.0
+
+        # Compute risk metrics
+        laundering_hops = sum(1 for e in edges if e["is_laundering"])
+        fraud_probs     = [n["fraud_prob"] for n in nodes]
+        max_fraud_prob  = max(fraud_probs) if fraud_probs else 0.0
+
+        risk_score = _compute_path_risk_score(nodes, edges)
+
+        valid_paths.append({
+            "path":              nodes,
+            "transactions":      edges,
+            "hop_count":         candidate["hop_count"],
+            "direction":         candidate["direction"],
+            "total_amount":      total_amount,
+            "terminal_amount":   terminal_amount,
+            "total_laundering_hops": laundering_hops,
+            "max_fraud_prob":    round(max_fraud_prob, 4),
+            "risk_score":        risk_score,
+            "temporally_valid":  True,
+        })
+
+    # ── Sort by risk score descending ─────────────────────────────────────
+    valid_paths.sort(key=lambda p: p["risk_score"], reverse=True)
+
+    # ── Truncate to max_paths ─────────────────────────────────────────────
+    truncated = len(valid_paths) > max_paths
+    valid_paths = valid_paths[:max_paths]
+
+    return {
+        "origin":                   account_id,
+        "direction":                direction,
+        "depth":                    depth,
+        "paths":                    valid_paths,
+        "path_count":               len(valid_paths),
+        "truncated":                truncated,
+        "candidates_before_filter": candidates_total,
+    }
 
 
 # ================================================
