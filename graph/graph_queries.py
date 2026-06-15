@@ -37,7 +37,7 @@ logger = logging.getLogger("securelegder.graph")
 # ------------------------------------------------
 NEO4J_URI      = os.getenv("NEO4J_URI",      "bolt://localhost:7687")
 NEO4J_USERNAME = os.getenv("NEO4J_USERNAME",  "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD",  "secureledger123")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD",  "test1234")
 
 # How many times to retry a transient failure before giving up
 _MAX_RETRIES = 3
@@ -214,9 +214,9 @@ def get_dashboard_stats() -> dict:
     MATCH (a:Account)
     RETURN
         count(a)                                          AS total_accounts,
-        count(CASE WHEN a.anomaly_score > 0.6 THEN 1 END) AS high_risk_accounts,
+        count(CASE WHEN a.anomaly_score > 0.7 THEN 1 END) AS high_risk_accounts,
         avg(a.anomaly_score)                              AS avg_risk,
-        sum(CASE WHEN a.anomaly_score > 0.6
+        sum(CASE WHEN a.anomaly_score > 0.7
                  THEN a.total_sent ELSE 0 END)            AS suspicious_amount
     """
     _default = {
@@ -766,42 +766,43 @@ def get_top_masterminds(limit: int = 20) -> list[dict]:
         logger.error("get_top_masterminds failed: %s", exc)
         return []
 
-
-# ================================================
-# RING TRANSACTIONS
-# ================================================
-
-def get_ring_transactions(members: list[str], limit: int = 20) -> list[dict]:
+def get_ring_transactions(ring_id: str, limit: int = 50) -> list[dict]:
     """
-    Fetch transactions between members of a fraud ring from Neo4j.
+    Return transactions belonging to a fraud ring.
     """
+
     query = """
     MATCH (src:Account)-[t:TRANSACTION]->(dst:Account)
-    WHERE src.id IN $members AND dst.id IN $members
+    WHERE src.ring_id = $ring_id OR dst.ring_id = $ring_id
     RETURN
-        src.id AS from_acc,
-        dst.id AS to_acc,
+        src.id AS sender,
+        dst.id AS receiver,
         t.amount_paid AS amount,
-        t.payment_format AS fmt,
-        t.is_laundering AS fraud,
-        t.timestamp AS ts
-    ORDER BY t.timestamp DESC
+        t.timestamp AS timestamp,
+        t.is_laundering AS is_laundering
+    ORDER BY t.amount_paid DESC
     LIMIT $limit
     """
+
     try:
         with _session() as session:
-            result = session.run(query, members=members, limit=limit)
+            results = session.run(
+                query,
+                ring_id=ring_id,
+                limit=limit,
+            )
+
             return [
                 {
-                    "from_acc": r["from_acc"],
-                    "to_acc":   r["to_acc"],
-                    "amount":   _safe_float(r["amount"]),
-                    "fmt":      r["fmt"] or "TRANSFER",
-                    "fraud":    _safe_int(r["fraud"]),
-                    "ts":       str(r["ts"] or ""),
+                    "sender": r["sender"],
+                    "receiver": r["receiver"],
+                    "amount": _safe_float(r["amount"]),
+                    "timestamp": str(r["timestamp"] or ""),
+                    "is_laundering": bool(r["is_laundering"]),
                 }
-                for r in result
+                for r in results
             ]
+
     except RuntimeError as exc:
         logger.error("get_ring_transactions failed: %s", exc)
         return []

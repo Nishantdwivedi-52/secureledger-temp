@@ -100,12 +100,12 @@ Ensure the following base dependencies are installed locally on your development
 ```bash
 docker run --name neo4j-secureledger \
   -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/secureledger123 \
+  -e NEO4J_AUTH=neo4j/test1234 \
   -d neo4j:5.18
 ```
 
 > Neo4j Browser available at **http://localhost:7474**  
-> User: `neo4j` | Password: `secureledger123`  
+> User: `neo4j` | Password: `test1234`  
 > Wait ~30 seconds for initialization to complete.
 
 ### Step 2 — Python Environment

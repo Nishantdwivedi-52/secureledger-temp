@@ -26,7 +26,7 @@ npm run dev
 > Note: The shebang `#!/usr/bin/env python3` in `run_pipeline.py` is not compatible with Windows PowerShell. Run the script with `python run_pipeline.py`.
 
 ## Important Runtime Assumptions
-- Neo4j runs locally at `bolt://localhost:7687` with credentials `neo4j / secureledger123`.
+- Neo4j runs locally at `bolt://localhost:7687` with credentials `neo4j / test1234`.
 - The dataset file is expected at `data/HI-Small_Trans.csv` or the project root.
 - Intermediate artifacts are stored under `ml/`, including `ml/graph.pt`, `ml/embeddings.npy`, and `ml/pipeline_run_report.json`.
 - The API also reads `ml/rings.json` and `evaluation_metrics.txt` for runtime routes.
