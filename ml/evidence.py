@@ -1,3 +1,4 @@
+import os
 import json
 from pathlib import Path
 from datetime import datetime
@@ -7,7 +8,9 @@ from datetime import datetime
 # LOAD RINGS
 # =========================================================
 
-RINGS_PATH = Path("ml/rings.json")
+ML_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(ML_DIR)
+RINGS_PATH = Path(os.path.join(PROJECT_ROOT, "ml", "rings.json"))
 
 
 def load_rings():

@@ -226,7 +226,7 @@ def identify_mastermind(G, members):
 
 def save_ring_json(suspicious, G):
 
-    print("\n=== SAVING fraud_rings.json ===")
+    print("\n=== SAVING rings.json ===")
 
     data = []
 
@@ -285,7 +285,7 @@ def save_ring_json(suspicious, G):
             indent=4
         )
 
-    print("Saved fraud_rings.json")
+    print("Saved rings.json")
 
 
 # =========================================================

@@ -26,8 +26,9 @@ from graph.graph_queries import (
     detect_circular_flows,
     detect_mule_accounts,
     get_ring_stats,
-    get_top_masterminds,
-    get_ring_graph
+    get_ring_graph,
+    get_ring_transactions,
+    get_top_masterminds
 )
 from ml.evidence import (
     generate_evidence,
@@ -80,24 +81,56 @@ def load_rings() -> list[dict]:
         )
 
 
-def read_f1_score() -> float:
+def read_all_metrics() -> dict:
+    metrics = {
+        "f1": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "auc_roc": 0.0,
+        "avg_prec": 0.0,
+        "tn": 0, "fp": 0, "fn": 0, "tp": 0,
+        "best_threshold": 0.0,
+        "training_epochs": 0,
+        "ensemble_weights": "",
+        "train_samples": 81722,
+        "test_samples": 20431
+    }
     try:
         with open(METRICS_FILE, "r") as f:
-            for line in f:
+            lines = f.read().splitlines()
+            for i, line in enumerate(lines):
                 stripped = line.strip()
                 if stripped.startswith("F1 Score"):
-                    parts = stripped.split(":", 1)
-                    if len(parts) == 2:
-                        value = float(parts[1].strip())
-                        logger.debug("Parsed F1 score: %f", value)
-                        return value
-        logger.warning("F1 Score line not found in %s — defaulting to 0.0", METRICS_FILE)
+                    metrics["f1"] = float(stripped.split(":", 1)[1].strip())
+                elif stripped.startswith("Precision"):
+                    metrics["precision"] = float(stripped.split(":", 1)[1].strip())
+                elif stripped.startswith("Recall"):
+                    metrics["recall"] = float(stripped.split(":", 1)[1].strip())
+                elif stripped.startswith("AUC-ROC"):
+                    metrics["auc_roc"] = float(stripped.split(":", 1)[1].strip())
+                elif stripped.startswith("Avg Prec"):
+                    metrics["avg_prec"] = float(stripped.split(":", 1)[1].strip())
+                elif stripped.startswith("Best Threshold"):
+                    metrics["best_threshold"] = float(stripped.split(":", 1)[1].strip())
+                elif stripped.startswith("Training epochs"):
+                    metrics["training_epochs"] = int(stripped.split(":", 1)[1].strip())
+                elif stripped.startswith("Ensemble weights"):
+                    metrics["ensemble_weights"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("Confusion Matrix"):
+                    if i + 2 < len(lines):
+                        row1 = lines[i+1].replace('[', '').replace(']', '').split()
+                        row2 = lines[i+2].replace('[', '').replace(']', '').split()
+                        if len(row1) == 2 and len(row2) == 2:
+                            metrics["tn"] = int(row1[0])
+                            metrics["fp"] = int(row1[1])
+                            metrics["fn"] = int(row2[0])
+                            metrics["tp"] = int(row2[1])
     except FileNotFoundError:
-        logger.warning("evaluation_metrics.txt not found at %s — defaulting to 0.0", METRICS_FILE)
-    except (ValueError, IndexError) as exc:
-        logger.error("Could not parse F1 score: %s — defaulting to 0.0", exc)
+        logger.warning("evaluation_metrics.txt not found at %s — using default metrics", METRICS_FILE)
+    except Exception as exc:
+        logger.error("Could not parse all metrics: %s — returning partial", exc)
 
-    return 0.0
+    return metrics
 
 
 def calculate_suspicious_amount(rings: list[dict]) -> float:
@@ -144,8 +177,8 @@ async def lifespan(app: FastAPI):
             "/api/stats will report model_f1 = 0.0 until the model is evaluated."
         )
     else:
-        f1 = read_f1_score()
-        logger.info("✅ Evaluation metrics loaded — F1 = %.4f", f1)
+        metrics = read_all_metrics()
+        logger.info("✅ Evaluation metrics loaded — F1 = %.4f", metrics.get("f1", 0.0))
 
     logger.info("=" * 60)
     yield
@@ -212,11 +245,14 @@ def global_hackathon_stats():
         fraud_rings_count = 0
         suspicious_amount = base_stats.get("suspicious_amount", 0.0)
 
+    metrics = read_all_metrics()
+
     return {
         "total_accounts":    base_stats.get("total_accounts", 0),
         "fraud_rings":       fraud_rings_count,
         "suspicious_amount": suspicious_amount,
-        "model_f1":          read_f1_score(),
+        "model_f1":          metrics.get("f1", 0.0),
+        "metrics":           metrics
     }
 
 
@@ -304,11 +340,8 @@ def generate_report(ring_id: str):
     if ring is None:
         raise HTTPException(status_code=404, detail=f"Ring '{ring_id}' not found.")
     
-    # Pass the matching ring's ID to the ML generators
-    evidence = generate_evidence(ring["ring_id"])
     return generate_str_report(ring["ring_id"])
 
-@app.get("/api/timeline/{ring_id}", tags=["Reports"])
 @app.get("/api/timeline/{ring_id}", tags=["Reports"])
 def get_timeline(ring_id: str) -> list[dict[str, Any]]:
     rings = load_rings()
@@ -320,15 +353,19 @@ def get_timeline(ring_id: str) -> list[dict[str, Any]]:
     if ring is None:
         raise HTTPException(status_code=404, detail=f"Ring '{ring_id}' not found.")
 
-    # 2. Pass the clean ID to the evidence generator
-    evidence = generate_evidence(ring["ring_id"])
+    # 2. Get members of the ring
+    members = ring.get("members", [])
 
+    # 3. Fetch transactions between the members from Neo4j
+    txs = get_ring_transactions(members, limit=20)
+
+    # 4. Map to response format
     timeline: list[dict[str, Any]] = []
-    for t in evidence["transaction_timeline"][:20]:
+    for t in txs:
         timeline.append({
             "from_acc": str(t.get("from_acc") or "Unknown"),
             "to_acc":   str(t.get("to_acc")   or "Unknown"),
-            "amount":   float(t.get("amount")  or 0),
+            "amount":   float(t.get("amount")  or 0.0),
             "fmt":      str(t.get("fmt")       or "TRANSFER"),
             "fraud":    int(t.get("fraud")     or 0),
             "ts":       str(t.get("ts")        or "Unknown"),

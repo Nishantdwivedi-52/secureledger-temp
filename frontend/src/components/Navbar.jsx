@@ -6,6 +6,7 @@
  */
 
 import { Link, useLocation } from "react-router-dom";
+import { useState } from "react";
 
 const LINKS = [
   { to: "/",            label: "Dashboard"   },
@@ -16,12 +17,14 @@ const LINKS = [
 
 export default function Navbar() {
   const { pathname } = useLocation();
+  const [hoveredLink, setHoveredLink] = useState(null);
 
   return (
     <nav style={{
-      background: "rgba(9,11,28,0.95)",
+      background: "rgba(255, 255, 255, 0.95)",
       backdropFilter: "blur(12px)",
-      borderBottom: "1px solid #1e293b",
+      borderBottom: "1px solid #E2E8F0",
+      boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
       padding: "0 32px",
       display: "flex",
       alignItems: "center",
@@ -35,50 +38,56 @@ export default function Navbar() {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{
           width: 10, height: 10, borderRadius: "50%",
-          background: "#22c55e",
-          boxShadow: "0 0 8px #22c55e",
-          animation: "pulse 2s infinite",
+          background: "#01B8AA",
+          boxShadow: "0 0 6px rgba(1,184,170,0.4)",
+          animation: "pulse-teal 2s infinite",
         }} />
         <span style={{
           fontWeight: 800,
           fontSize: 20,
-          background: "linear-gradient(90deg,#a855f7,#ec4899)",
+          background: "linear-gradient(90deg, #01B8AA, #0EA5E9)",
           WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",
+          padding: "4px 0", // Guarantee gradient clip protection
         }}>
           SecureLedger
         </span>
         <span style={{
-          fontSize: 10,
-          background: "#1e293b",
-          border: "1px solid #334155",
-          color: "#64748b",
+          fontSize: 11,
+          background: "#F0FDFA",
+          border: "1px solid #01B8AA",
+          color: "#01B8AA",
           padding: "2px 8px",
-          borderRadius: 9999,
-          fontWeight: 600,
+          borderRadius: 6,
+          fontWeight: 700,
+          letterSpacing: "0.05em",
         }}>
           AI
         </span>
       </div>
 
       {/* Links */}
-      <div style={{ display: "flex", gap: 4 }}>
+      <div style={{ display: "flex", gap: 6 }}>
         {LINKS.map(({ to, label }) => {
           const active = pathname === to;
+          const isHovered = hoveredLink === to;
+          
           return (
             <Link
               key={to}
               to={to}
+              onMouseEnter={() => setHoveredLink(to)}
+              onMouseLeave={() => setHoveredLink(null)}
               style={{
                 padding: "8px 18px",
-                borderRadius: 10,
+                borderRadius: 8,
                 fontSize: 14,
-                fontWeight: active ? 700 : 500,
-                color: active ? "#c4b5fd" : "#94a3b8",
-                background: active ? "#1e1b4b" : "transparent",
-                border: `1px solid ${active ? "#4c1d95" : "transparent"}`,
+                fontWeight: active ? 600 : 500,
+                color: active ? "#01B8AA" : (isHovered ? "#01B8AA" : "#64748B"),
+                background: active ? "#F0FDFA" : (isHovered ? "#F8FAFC" : "transparent"),
+                border: active ? "1px solid #CCF5F2" : "1px solid transparent",
                 textDecoration: "none",
-                transition: "all 0.15s",
+                transition: "all 0.15s ease",
               }}
             >
               {label}
@@ -92,23 +101,32 @@ export default function Navbar() {
         display: "flex",
         alignItems: "center",
         gap: 8,
-        background: "#0f2b1b",
-        border: "1px solid #166534",
+        background: "#F0FDF4",
+        border: "1px solid #BBF7D0",
         borderRadius: 9999,
         padding: "6px 14px",
         fontSize: 12,
-        color: "#4ade80",
-        fontWeight: 600,
+        color: "#16A34A",
+        fontWeight: 700,
+        letterSpacing: "0.05em"
       }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
+        <span style={{ 
+          width: 8, height: 8, borderRadius: "50%", 
+          background: "#16A34A", display: "inline-block",
+          animation: "pulse-green 2s infinite",
+        }} />
         LIVE
       </div>
 
-      {/* Pulse keyframe — injected once */}
+      {/* Pulse keyframes */}
       <style>{`
-        @keyframes pulse {
-          0%,100% { opacity:1; }
-          50%      { opacity:0.4; }
+        @keyframes pulse-teal {
+          0%,100% { opacity: 1; box-shadow: 0 0 6px rgba(1,184,170,0.4); }
+          50%     { opacity: 0.5; box-shadow: 0 0 14px rgba(1,184,170,0.8); }
+        }
+        @keyframes pulse-green {
+          0%,100% { opacity: 1; box-shadow: 0 0 4px rgba(22,163,74,0.4); }
+          50%     { opacity: 0.6; box-shadow: 0 0 10px rgba(22,163,74,0.7); }
         }
       `}</style>
     </nav>

@@ -214,9 +214,9 @@ def get_dashboard_stats() -> dict:
     MATCH (a:Account)
     RETURN
         count(a)                                          AS total_accounts,
-        count(CASE WHEN a.anomaly_score > 0.7 THEN 1 END) AS high_risk_accounts,
+        count(CASE WHEN a.anomaly_score > 0.6 THEN 1 END) AS high_risk_accounts,
         avg(a.anomaly_score)                              AS avg_risk,
-        sum(CASE WHEN a.anomaly_score > 0.7
+        sum(CASE WHEN a.anomaly_score > 0.6
                  THEN a.total_sent ELSE 0 END)            AS suspicious_amount
     """
     _default = {
@@ -764,6 +764,46 @@ def get_top_masterminds(limit: int = 20) -> list[dict]:
             ]
     except RuntimeError as exc:
         logger.error("get_top_masterminds failed: %s", exc)
+        return []
+
+
+# ================================================
+# RING TRANSACTIONS
+# ================================================
+
+def get_ring_transactions(members: list[str], limit: int = 20) -> list[dict]:
+    """
+    Fetch transactions between members of a fraud ring from Neo4j.
+    """
+    query = """
+    MATCH (src:Account)-[t:TRANSACTION]->(dst:Account)
+    WHERE src.id IN $members AND dst.id IN $members
+    RETURN
+        src.id AS from_acc,
+        dst.id AS to_acc,
+        t.amount_paid AS amount,
+        t.payment_format AS fmt,
+        t.is_laundering AS fraud,
+        t.timestamp AS ts
+    ORDER BY t.timestamp DESC
+    LIMIT $limit
+    """
+    try:
+        with _session() as session:
+            result = session.run(query, members=members, limit=limit)
+            return [
+                {
+                    "from_acc": r["from_acc"],
+                    "to_acc":   r["to_acc"],
+                    "amount":   _safe_float(r["amount"]),
+                    "fmt":      r["fmt"] or "TRANSFER",
+                    "fraud":    _safe_int(r["fraud"]),
+                    "ts":       str(r["ts"] or ""),
+                }
+                for r in result
+            ]
+    except RuntimeError as exc:
+        logger.error("get_ring_transactions failed: %s", exc)
         return []
 
 

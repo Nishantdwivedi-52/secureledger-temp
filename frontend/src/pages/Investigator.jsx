@@ -2,6 +2,7 @@
  * Investigator.jsx
  * ----------------
  * Deep-dive fraud intelligence page.
+ * Fully styled for Light Theme (Premium Banking UI).
  */
 
 import { useEffect, useState } from "react";
@@ -17,14 +18,19 @@ import Navbar              from "../components/Navbar";
 function StatCard({ label, value, color }) {
   return (
     <div style={{
-      background: "rgba(255,255,255,0.03)",
-      border: "1px solid #1e293b",
-      borderRadius: 16,
-      padding: "24px 28px",
-      boxShadow: "0 0 25px rgba(168,85,247,0.06)",
+      background: "#FFFFFF",
+      border: "1px solid #E2E8F0",
+      borderLeft: `4px solid ${color}`,
+      borderRadius: 14,
+      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+      overflow: "hidden"
     }}>
-      <div style={{ color: "#64748b", fontSize: 14, marginBottom: 12 }}>{label}</div>
-      <div style={{ fontSize: 44, fontWeight: 800, color }}>{value}</div>
+      <div style={{
+        padding: "24px",
+      }}>
+        <div style={{ color: "#64748B", fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div>
+        <div style={{ fontSize: 36, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
+      </div>
     </div>
   );
 }
@@ -78,68 +84,123 @@ export default function Investigator() {
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#000,#050816,#0b1120)", color: "white" }}>
+    <div style={{ minHeight: "100vh", background: "#FFFFFF", color: "#0F172A" }}>
       <Navbar />
-      <div style={{ maxWidth: 1400, margin: "0 auto", padding: "40px 24px" }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto", padding: "40px 48px" }}>
         
         {/* Header and Stats */}
-        <div style={{ marginBottom: 40 }}>
-           <h1 style={{ fontSize: 52, fontWeight: 900, background: "linear-gradient(90deg,#a855f7,#ec4899,#ef4444)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+        <div style={{ overflow: "visible", marginBottom: 8 }}>
+          <h1 style={{
+            display: "inline-block",
+            fontSize: 42,
+            fontWeight: 800,
+            background: "linear-gradient(135deg, #01B8AA, #0EA5E9)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            padding: "8px 10px",
+            margin: "-8px 0 10px -10px",
+            lineHeight: 1.3,
+          }}>
             SecureLedger AI
-           </h1>
+          </h1>
         </div>
 
         <LiveAlertBanner />
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 20, marginBottom: 40 }}>
-          <StatCard label="Fraud Rings"         value={stats.total_rings ?? 0}         color="#f87171" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 20, marginBottom: 48, marginTop: 32 }}>
+          <StatCard label="Fraud Rings"         value={stats.total_rings ?? 0}         color="#FD625E" />
           
           {/* FIXED: Uses the length of the table data as a bulletproof fallback */}
-          <StatCard label="Masterminds"         value={stats.total_masterminds ?? stats.masterminds ?? masterminds.length ?? 0} color="#c084fc" />
+          <StatCard label="Masterminds"         value={stats.total_masterminds ?? stats.masterminds ?? masterminds.length ?? 0} color="#8B5CF6" />
           
-          <StatCard label="Suspicious Accounts" value={stats.suspicious_accounts ?? 0} color="#fb923c" />
-          <StatCard label="Avg Ring Size"       value={stats.avg_ring_size ? Number(stats.avg_ring_size).toFixed(1) : "—"} color="#34d399" />
+          <StatCard label="Suspicious Accounts" value={stats.suspicious_accounts ?? 0} color="#F2C80F" />
+          <StatCard label="Avg Ring Size"       value={stats.avg_ring_size ? Number(stats.avg_ring_size).toFixed(1) : "—"} color="#01B8AA" />
         </div>
 
         {/* Masterminds Table */}
-        <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid #1e293b", borderRadius: 20, padding: "28px 32px", marginBottom: 40 }}>
-          <h2 style={{ fontSize: 26, fontWeight: 800, marginBottom: 24 }}>👑 Top Masterminds</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid #1e293b" }}>
-                {["Account", "Ring", "Score", "Prob", "Members", "Actions"].map(h => (
-                  <th key={h} style={{ textAlign: "left", fontSize: 11, color: "#475569" }}>{h.toUpperCase()}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {masterminds.map((m, idx) => (
-                <tr key={idx} onClick={() => setExplainTarget(m)} style={{ cursor: "pointer", borderBottom: "1px solid #0f172a" }}>
-                  <td style={{ padding: "16px 0", fontFamily: "monospace", color: "#94a3b8" }}>{m.id?.slice(0, 14)}…</td>
-                  <td style={{ padding: "16px 0" }}><span style={{ background: "#1e1b4b", color: "#a78bfa", padding: "2px 10px", borderRadius: 9999 }}>{m.ring_id}</span></td>
-                  <td style={{ padding: "16px 0" }}>{(m.mastermind_score ?? 0).toFixed(3)}</td>
-                  <td style={{ padding: "16px 0" }}>{((m.fraud_prob ?? 0) * 100).toFixed(1)}%</td>
-                  <td style={{ padding: "16px 0" }}>{m.member_count ?? "—"}</td>
-                  <td style={{ padding: "16px 0" }} onClick={e => e.stopPropagation()}>
-                    <button onClick={() => downloadReport(m.ring_id)} style={{ marginRight: 8 }}>📄 STR</button>
-                    <button onClick={() => loadTimeline(m.ring_id)}>⏱ Timeline</button>
-                  </td>
+        <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 16, padding: "28px 32px", marginBottom: 48, boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+            <div style={{ width: 20, height: 20, background: "#F2C80F", borderRadius: "50%" }} />
+            <h2 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: 0 }}>Top Masterminds</h2>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
+              <thead>
+                <tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E2E8F0" }}>
+                  {["Account", "Ring", "Score", "Prob", "Members", "Actions"].map(h => (
+                    <th key={h} style={{ textAlign: "left", fontSize: 11, fontWeight: 700, color: "#64748B", padding: "14px 20px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {masterminds.map((m, idx) => {
+                  const prob = m.fraud_prob ?? 0;
+                  const scoreColor = prob > 0.7 ? "#FD625E" : prob > 0.4 ? "#F2C80F" : "#01B8AA";
+                  return (
+                    <tr 
+                      key={idx} 
+                      onClick={() => setExplainTarget(m)} 
+                      style={{ cursor: "pointer", borderBottom: "1px solid #E2E8F0", transition: "background 0.2s" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <td style={{ padding: "18px 20px", fontFamily: "monospace", color: "#0F172A", fontWeight: 600, fontSize: 14 }}>{m.id?.slice(0, 14)}…</td>
+                      <td style={{ padding: "18px 20px" }}>
+                        <span style={{ background: "#F3E8FF", color: "#8B5CF6", border: "1px solid rgba(139, 92, 246, 0.3)", padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
+                          {m.ring_id}
+                        </span>
+                      </td>
+                      <td style={{ padding: "18px 20px", fontWeight: 700, color: "#0F172A", fontSize: 14 }}>{(m.mastermind_score ?? 0).toFixed(3)}</td>
+                      <td style={{ padding: "18px 20px", fontWeight: 700, color: scoreColor, fontSize: 14 }}>{(prob * 100).toFixed(1)}%</td>
+                      <td style={{ padding: "18px 20px", color: "#64748B", fontWeight: 500 }}>{m.member_count ?? "—"}</td>
+                      <td style={{ padding: "18px 20px", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
+                        <button 
+                          onClick={() => downloadReport(m.ring_id)} 
+                          style={{ 
+                            marginRight: 10, background: "#FFFFFF", color: "#FD625E", border: "1px solid #FD625E", 
+                            padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.2s" 
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "#FD625E"; e.currentTarget.style.color = "#FFFFFF"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "#FFFFFF"; e.currentTarget.style.color = "#FD625E"; }}
+                        >
+                          STR
+                        </button>
+                        <button 
+                          onClick={() => loadTimeline(m.ring_id)}
+                          style={{ 
+                            background: "#FFFFFF", color: "#01B8AA", border: "1px solid #01B8AA", 
+                            padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.2s" 
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "#01B8AA"; e.currentTarget.style.color = "#FFFFFF"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "#FFFFFF"; e.currentTarget.style.color = "#01B8AA"; }}
+                        >
+                          Timeline
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Ring Graph Section */}
-        <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 20, padding: "24px", marginBottom: 40 }}>
-          <h2 style={{ fontSize: 26, fontWeight: 800, marginBottom: 16 }}>🕸 Fraud Ring Network</h2>
+        <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: "28px 32px", marginBottom: 48, boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+            <div style={{ width: 20, height: 20, background: "#8B5CF6", borderRadius: 4 }} />
+            <h2 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: 0 }}>Fraud Ring Network</h2>
+          </div>
           <RingGraph />
         </div>
 
         {/* Timeline Section */}
         {timelineData.length > 0 && (
-          <div style={{ marginBottom: 40 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 700 }}>⏱ Transaction Timeline — {activeRingId}</h2>
+          <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 16, padding: "28px 32px", marginBottom: 40, boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+              <div style={{ width: 20, height: 20, background: "#01B8AA", borderRadius: "50%" }} />
+              <h2 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: 0 }}>Transaction Timeline — {activeRingId}</h2>
+            </div>
             <Timeline transactions={timelineData} />
           </div>
         )}

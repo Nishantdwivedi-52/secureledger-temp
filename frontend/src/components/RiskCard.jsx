@@ -3,9 +3,10 @@
  * ------------
  * Animated stat card with:
  *  - Count-up animation on mount
- *  - Colour-coded glow matching card type
+ *  - Colour-coded accent matching card type
  *  - Trend arrow (up / down / neutral)
  *  - Hover lift effect
+ *  - Professional banking dashboard styling (Light theme)
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -13,39 +14,49 @@ import { useEffect, useRef, useState } from "react";
 // ─── theme map ────────────────────────────────────────────────────────────────
 const THEMES = {
   default: {
-    border:  "#334155",
-    glow:    "rgba(99,102,241,0.15)",
-    accent:  "#818cf8",
-    bg:      "linear-gradient(135deg,#1e293b,#0f172a)",
-    icon:    "📊",
+    bg:      "#FFFFFF",
+    border:  "#E2E8F0",
+    accent:  "#01B8AA", // teal
+    glow:    "rgba(1, 184, 170, 0.12)",
+    text:    "#0F172A",
+    sub:     "#64748B",
+    icon:    null,
   },
   danger: {
-    border:  "#ef4444",
-    glow:    "rgba(239,68,68,0.18)",
-    accent:  "#f87171",
-    bg:      "linear-gradient(135deg,#2d0a0a,#1a0505)",
-    icon:    "🚨",
+    bg:      "#FFFFFF",
+    border:  "#E2E8F0",
+    accent:  "#FD625E", // coral red
+    glow:    "rgba(253, 98, 94, 0.12)",
+    text:    "#0F172A",
+    sub:     "#64748B",
+    icon:    null,
   },
   warning: {
-    border:  "#f97316",
-    glow:    "rgba(249,115,22,0.18)",
-    accent:  "#fb923c",
-    bg:      "linear-gradient(135deg,#2d1208,#1a0a05)",
-    icon:    "⚠️",
+    bg:      "#FFFFFF",
+    border:  "#E2E8F0",
+    accent:  "#F2C80F", // yellow
+    glow:    "rgba(242, 200, 15, 0.12)",
+    text:    "#0F172A",
+    sub:     "#64748B",
+    icon:    null,
   },
   success: {
-    border:  "#22c55e",
-    glow:    "rgba(34,197,94,0.18)",
-    accent:  "#4ade80",
-    bg:      "linear-gradient(135deg,#052e16,#020f09)",
-    icon:    "✅",
+    bg:      "#FFFFFF",
+    border:  "#E2E8F0",
+    accent:  "#01B8AA", // teal
+    glow:    "rgba(1, 184, 170, 0.12)",
+    text:    "#0F172A",
+    sub:     "#64748B",
+    icon:    null,
   },
   purple: {
-    border:  "#a855f7",
-    glow:    "rgba(168,85,247,0.18)",
-    accent:  "#c084fc",
-    bg:      "linear-gradient(135deg,#1e0a2e,#0d0517)",
-    icon:    "🤖",
+    bg:      "#FFFFFF",
+    border:  "#E2E8F0",
+    accent:  "#8B5CF6", // purple
+    glow:    "rgba(139, 92, 246, 0.12)",
+    text:    "#0F172A",
+    sub:     "#64748B",
+    icon:    null,
   },
 };
 
@@ -100,8 +111,8 @@ function TrendArrow({ trend }) {
   return (
     <span style={{
       fontSize: 12,
-      fontWeight: 700,
-      color: up ? "#f87171" : "#4ade80",   // up = worse for fraud metrics
+      fontWeight: 800,
+      color: up ? "#FD625E" : "#01B8AA",   // up = worse for fraud metrics
       marginLeft: 6,
     }}>
       {up ? "▲" : "▼"}
@@ -128,40 +139,43 @@ export default function RiskCard({
       onMouseLeave={() => setHovered(false)}
       style={{
         background:    theme.bg,
-        borderRadius:  18,
-        border:        `1px solid ${theme.border}`,
+        borderRadius:  12, // Tighter corner radius for a sharper, premium look
+        border:        "1px solid #E2E8F0",
+        borderLeft:    `4px solid ${theme.accent}`, // Signature banking UI left border
         boxShadow:     hovered
-          ? `0 0 40px ${theme.glow}, 0 20px 40px rgba(0,0,0,0.4)`
-          : `0 0 20px ${theme.glow}, 0 10px 20px rgba(0,0,0,0.3)`,
+          ? "0 4px 16px rgba(0,0,0,0.10)"
+          : "0 2px 8px rgba(0,0,0,0.06)",
         padding:       "24px 28px",
         flex:          1,
         minWidth:      200,
-        transform:     hovered ? "translateY(-6px)" : "translateY(0)",
+        transform:     hovered ? "translateY(-2px)" : "translateY(0)", // Gentle lift
         transition:    "transform 0.25s ease, box-shadow 0.25s ease",
         position:      "relative",
         overflow:      "hidden",
       }}
     >
-      {/* Decorative background circle */}
+      {/* Decorative background glow circle */}
       <div style={{
         position:     "absolute",
-        top:          -30,
-        right:        -30,
-        width:        100,
-        height:       100,
+        top:          -40,
+        right:        -40,
+        width:        120,
+        height:       120,
         borderRadius: "50%",
-        background:   theme.glow,
-        filter:       "blur(20px)",
+        background:   theme.accent,
+        opacity:      0.06, // extremely subtle tint to avoid overpowering white bg
+        filter:       "blur(30px)",
         pointerEvents:"none",
       }} />
 
       {/* Icon + title row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <span style={{ fontSize: 18 }}>{icon ?? theme.icon}</span>
+        {/* Render icon if provided (Dashboard passes colored divs) */}
+        {icon && <span style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</span>}
         <span style={{
           fontSize:      11,
           fontWeight:    700,
-          color:         "#64748b",
+          color:         "#64748B",
           letterSpacing: "0.08em",
           textTransform: "uppercase",
         }}>
@@ -170,13 +184,14 @@ export default function RiskCard({
       </div>
 
       {/* Animated value */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span style={{
-          fontSize:   38,
+          fontSize:   36,
           fontWeight: 900,
           color:      theme.accent,
           lineHeight: 1,
           fontVariantNumeric: "tabular-nums",
+          letterSpacing: "-0.02em",
         }}>
           {formatValue(value, animated)}
         </span>
@@ -187,8 +202,8 @@ export default function RiskCard({
       {subtitle && (
         <div style={{
           fontSize:   12,
-          color:      "#475569",
-          marginTop:  8,
+          color:      "#64748B",
+          marginTop:  10,
           fontWeight: 500,
         }}>
           {subtitle}
@@ -202,8 +217,9 @@ export default function RiskCard({
         left:         0,
         right:        0,
         height:       3,
-        background:   `linear-gradient(90deg, ${theme.border}, transparent)`,
-        borderRadius: "0 0 18px 18px",
+        background:   `linear-gradient(90deg, ${theme.accent}, transparent)`,
+        borderRadius: "0 0 12px 12px",
+        opacity:      0.8,
       }} />
     </div>
   );
