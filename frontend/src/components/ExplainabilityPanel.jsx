@@ -2,8 +2,7 @@
  * ExplainabilityPanel.jsx
  * -----------------------
  * Shows a "Why was this account flagged?" breakdown panel.
- * SMART VERSION: Automatically hides metrics that equal 0.0 or null
- * so the UI always looks clean and populated.
+ * Fully styled for Light Theme.
  */
 
 import { useEffect, useState } from "react";
@@ -12,21 +11,20 @@ const API = "http://127.0.0.1:8000";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function ScoreBar({ value, max = 1, color = "#a855f7", label }) {
+function ScoreBar({ value, max = 1, color = "#8B5CF6", label }) {
   const pct = Math.min((value / max) * 100, 100);
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-        <span style={{ fontSize: 12, color: "#94a3b8" }}>{label}</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color }}>{(value * 100).toFixed(1)}%</span>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#64748B" }}>{label}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{(value * 100).toFixed(1)}%</span>
       </div>
-      <div style={{ background: "#1e293b", borderRadius: 9999, height: 8 }}>
+      <div style={{ background: "#E2E8F0", borderRadius: 9999, height: 8, overflow: "hidden" }}>
         <div style={{
           width: `${pct}%`,
           height: "100%",
           background: color,
           borderRadius: 9999,
-          boxShadow: `0 0 8px ${color}60`,
           transition: "width 0.6s ease",
         }} />
       </div>
@@ -35,26 +33,27 @@ function ScoreBar({ value, max = 1, color = "#a855f7", label }) {
 }
 
 function ReasonBadge({ text, severity = "high" }) {
-  const colours = {
-    high:   { bg: "#450a0a", border: "#ef4444", color: "#fca5a5" },
-    medium: { bg: "#431407", border: "#f97316", color: "#fdba74" },
-    low:    { bg: "#1c1917", border: "#78716c", color: "#d6d3d1" },
+  const styles = {
+    high:   { bg: "#FFF5F5", border: "#FD625E", color: "#FD625E", dot: "#FD625E" },
+    medium: { bg: "#FFFBEB", border: "#F2C80F", color: "#D97706", dot: "#F2C80F" },
+    low:    { bg: "#F0FDF9", border: "#01B8AA", color: "#01B8AA", dot: "#01B8AA" },
   };
-  const c = colours[severity];
+  const s = styles[severity];
   return (
     <div style={{
-      background: c.bg,
-      border: `1px solid ${c.border}`,
+      background: s.bg,
+      border: `1px solid ${s.border}`,
       borderRadius: 8,
-      padding: "6px 12px",
-      fontSize: 12,
-      color: c.color,
-      marginBottom: 6,
+      padding: "8px 14px",
+      fontSize: 13,
+      fontWeight: 600,
+      color: s.color,
+      marginBottom: 8,
       display: "flex",
       alignItems: "center",
-      gap: 8,
+      gap: 10,
     }}>
-      <span>{severity === "high" ? "🔴" : severity === "medium" ? "🟠" : "🟡"}</span>
+      <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.dot }} />
       {text}
     </div>
   );
@@ -124,7 +123,6 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
 
   const reasons = account ? buildReasons(account, mastermind) : [];
 
-  // Parse values to see if we should render them
   const gnnScore = account?.gnn_score || account?.risk_score || 0;
   const pageRank = account?.page_rank || account?.pagerank || 0;
   const betweenness = account?.betweenness_centrality || account?.betweenness || 0;
@@ -134,7 +132,7 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
     <div style={{
       position: "fixed",
       inset: 0,
-      background: "rgba(0,0,0,0.7)",
+      background: "rgba(15, 23, 42, 0.4)", // Slate-900 with opacity
       backdropFilter: "blur(4px)",
       zIndex: 200,
       display: "flex",
@@ -145,29 +143,30 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{
-        background: "#0a0f1e",
-        border: "1px solid #7c3aed",
+        background: "#FFFFFF",
+        border: "1px solid #E2E8F0",
         borderRadius: 20,
         width: "100%",
-        maxWidth: 620,
+        maxWidth: 640,
         maxHeight: "85vh",
         overflow: "auto",
-        padding: 32,
-        boxShadow: "0 0 60px rgba(124,58,237,0.3)",
+        padding: "32px 40px",
+        boxShadow: "0 10px 40px rgba(0,0,0,0.1)",
         animation: "fadeIn 0.2s ease-out",
       }}>
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 28 }}>
           <div>
-            <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>EXPLAINABILITY REPORT</div>
-            <h2 style={{ fontSize: 22, fontWeight: 800, color: "white", margin: 0 }}>
+            <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>EXPLAINABILITY REPORT</div>
+            <h2 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: 0 }}>
               Why Was This Account Flagged?
             </h2>
             <div style={{
               fontFamily: "monospace",
-              fontSize: 12,
-              color: "#a78bfa",
+              fontSize: 14,
+              color: "#64748B",
               marginTop: 6,
+              fontWeight: 500
             }}>
               {mastermind.id}
             </div>
@@ -175,32 +174,47 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
           <button
             onClick={onClose}
             style={{
-              background: "#1e293b",
-              border: "1px solid #334155",
-              color: "#94a3b8",
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
+              color: "#64748B",
               width: 36, height: 36,
-              borderRadius: 9999,
+              borderRadius: "50%",
               cursor: "pointer",
-              fontSize: 16,
+              fontSize: 14,
+              fontWeight: 700,
               display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.2s"
             }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#E2E8F0"; e.currentTarget.style.color = "#0F172A"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "#F8FAFC"; e.currentTarget.style.color = "#64748B"; }}
           >
             ✕
           </button>
         </div>
 
         {loading && (
-          <div style={{ textAlign: "center", padding: 40, color: "#475569" }}>
-            Loading account profile…
+          <div style={{ textAlign: "center", padding: 60, display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <div style={{
+              border: "3px solid #E2E8F0",
+              borderTop: "3px solid #01B8AA",
+              borderRadius: "50%",
+              width: 32, height: 32,
+              animation: "spin 1s linear infinite",
+              marginBottom: 16
+            }} />
+            <div style={{ color: "#64748B", fontSize: 14, fontWeight: 500 }}>
+              Loading profile data...
+            </div>
           </div>
         )}
 
         {error && (
           <div style={{
-            background: "#450a0a", border: "1px solid #ef4444",
-            borderRadius: 10, padding: 16, color: "#fca5a5", marginBottom: 16,
+            background: "#FFF5F5", border: "1px solid #FD625E",
+            borderRadius: 12, padding: "16px 20px", color: "#FD625E", marginBottom: 20,
+            fontWeight: 600, fontSize: 14
           }}>
-            ⚠️ {error}
+            System Error: {error}
           </div>
         )}
 
@@ -208,34 +222,33 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
           <>
             {/* Score bars */}
             <div style={{
-              background: "#0f172a",
-              border: "1px solid #1e293b",
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
               borderRadius: 14,
-              padding: "20px 24px",
+              padding: "24px",
               marginBottom: 24,
             }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: "0.05em", marginBottom: 16 }}>
                 RISK SCORES
               </div>
               <ScoreBar
                 label="Ensemble Fraud Probability"
                 value={account.fraud_prob || mastermind.fraud_prob || 0}
-                color="#ef4444"
+                color="#FD625E"
               />
               
-              {/* Only show GNN score if it is > 0 */}
               {gnnScore > 0 && (
                 <ScoreBar
                   label="GNN Fraud Score"
                   value={gnnScore}
-                  color="#a855f7"
+                  color="#8B5CF6"
                 />
               )}
 
               <ScoreBar
                 label="Isolation Forest Anomaly"
                 value={account.anomaly_score || account.isolation_forest || 0}
-                color="#f97316"
+                color="#F2C80F"
               />
             </div>
 
@@ -248,52 +261,52 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
             }}>
               
               {/* Core Stats always show */}
-              <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Ring Members</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#a78bfa" }}>{mastermind.member_count || "—"}</div>
+              <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px" }}>
+                <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Ring Members</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#8B5CF6" }}>{mastermind.member_count || "—"}</div>
               </div>
               
-              <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Transactions</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#fb923c" }}>{account.tx_count || 0}</div>
+              <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px" }}>
+                <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Transactions</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#F2C80F" }}>{account.tx_count || 0}</div>
               </div>
               
-              <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Total Sent</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#f87171" }}>${Number(account.total_sent || 0).toLocaleString()}</div>
+              <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px" }}>
+                <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Total Sent</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#FD625E" }}>${Number(account.total_sent || 0).toLocaleString()}</div>
               </div>
 
-              {/* Advanced Graph Stats only show if they exist */}
+              {/* Advanced Graph Stats */}
               {pageRank > 0 && (
-                <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>PageRank</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "#34d399" }}>{pageRank.toFixed(4)}</div>
+                <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px" }}>
+                  <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>PageRank</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#01B8AA" }}>{pageRank.toFixed(4)}</div>
                 </div>
               )}
 
               {betweenness > 0 && (
-                <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Betweenness</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "#60a5fa" }}>{betweenness.toFixed(4)}</div>
+                <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px" }}>
+                  <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Betweenness</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#0EA5E9" }}>{betweenness.toFixed(4)}</div>
                 </div>
               )}
 
               {community && (
-                <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>Community</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "#818cf8" }}>{community}</div>
+                <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px" }}>
+                  <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Community</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#0F172A" }}>{community}</div>
                 </div>
               )}
             </div>
 
             {/* Flagging reasons */}
             <div style={{
-              background: "#0f172a",
-              border: "1px solid #1e293b",
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
               borderRadius: 14,
-              padding: "20px 24px",
+              padding: "24px",
             }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", letterSpacing: "0.05em", marginBottom: 16 }}>
                 SUSPICIOUS PATTERNS DETECTED
               </div>
               {reasons.map((r, i) => (
@@ -304,21 +317,21 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
             {/* Mastermind-specific */}
             {(account.ring_id || mastermind.ring_id) && (
               <div style={{
-                marginTop: 16,
-                background: "#1c1b4b",
-                border: "1px solid #4c1d95",
-                borderRadius: 12,
-                padding: "14px 18px",
+                marginTop: 20,
+                background: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                borderRadius: 14,
+                padding: "16px 20px",
                 display: "flex",
                 alignItems: "center",
-                gap: 12,
+                gap: 16,
               }}>
-                <span style={{ fontSize: 22 }}>👑</span>
+                <div style={{ width: 24, height: 24, background: "#F2C80F", borderRadius: "50%", flexShrink: 0 }} />
                 <div>
-                  <div style={{ fontSize: 12, color: "#a78bfa", fontWeight: 700 }}>
+                  <div style={{ fontSize: 14, color: "#0F172A", fontWeight: 800 }}>
                     Identified as Ring Mastermind
                   </div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  <div style={{ fontSize: 13, color: "#64748B", marginTop: 4, fontWeight: 500 }}>
                     Ring {account.ring_id || mastermind.ring_id} · Score {(mastermind.mastermind_score || 0).toFixed(4)}
                   </div>
                 </div>
@@ -329,8 +342,11 @@ export default function ExplainabilityPanel({ mastermind, onClose }) {
 
         <style>{`
           @keyframes fadeIn {
-            from { opacity:0; transform:scale(0.96); }
-            to   { opacity:1; transform:scale(1); }
+            from { opacity:0; transform:scale(0.96) translateY(10px); }
+            to   { opacity:1; transform:scale(1) translateY(0); }
+          }
+          @keyframes spin {
+            100% { transform: rotate(360deg); }
           }
         `}</style>
       </div>

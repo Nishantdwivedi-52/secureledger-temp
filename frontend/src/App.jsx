@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Dashboard from "./pages/Dashboard";
-import RiskTable from "./pages/RiskTable";
+import RiskTable from "./components/RiskTable";
 import FraudRings from "./pages/FraudRings";
 import Investigator from "./pages/Investigator";
 

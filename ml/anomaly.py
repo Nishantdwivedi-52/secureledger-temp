@@ -12,7 +12,8 @@ def compute_anomaly_scores(embeddings_path='ml/embeddings.npy'):
     model = IsolationForest(n_estimators=200, contamination=0.01, random_state=42)
     model.fit(emb)
     raw = model.score_samples(emb)
-    scores = MinMaxScaler().fit_transform((-raw).reshape(-1, 1)).flatten()
+    z_scores = (raw - raw.mean()) / raw.std()
+    scores = 1 / (1 + np.exp(z_scores))
     np.save('ml/anomaly_scores.npy', scores)
     print(f'Scores computed. Min={scores.min():.3f} Max={scores.max():.3f}\n')
     return scores
