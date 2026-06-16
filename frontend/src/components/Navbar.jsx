@@ -9,11 +9,12 @@ import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 
 const LINKS = [
-  { to: "/",            label: "Dashboard"   },
-  { to: "/risk",        label: "Risk Table"  },
-  { to: "/rings",       label: "Fraud Rings" },
-  { to: "/investigator",label: "Investigator"},
-  { to: "/structuring", label: "Structuring" },
+  { to: "/",            label: "Dashboard"    },
+  { to: "/risk",        label: "Risk Table"   },
+  { to: "/rings",       label: "Fraud Rings"  },
+  { to: "/investigator",label: "Investigator" },
+  { to: "/structuring", label: "Structuring"  },
+  { to: "/dormant",     label: "Dormant Accts"},
 ];
 
 export default function Navbar() {

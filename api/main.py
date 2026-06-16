@@ -31,6 +31,7 @@ from graph.graph_queries import (
     get_top_masterminds,
     get_fund_flow_paths,
     detect_structuring_patterns,
+    detect_dormant_accounts,
 )
 from ml.evidence import (
     generate_evidence,
@@ -414,3 +415,37 @@ def get_timeline(ring_id: str) -> list[dict[str, Any]]:
         })
 
     return timeline
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# TASK 18 — DORMANT ACCOUNT FLAG
+# GET /api/graph/dormant-accounts
+# Detect accounts inactive for ≥ min_dormant_days that were reactivated.
+# ────────────────────────────────────────────────────────────────────────────────
+@app.get("/api/graph/dormant-accounts", tags=["Graph Analytics"])
+def get_dormant_accounts(
+    limit: int = 50,
+    min_dormant_days: int = 90,
+) -> list[dict[str, Any]]:
+    """
+    Return accounts that were dormant for **min_dormant_days** or more and
+    subsequently reactivated (Interpretation B — most-recent gap only).
+
+    Response fields (12 total):
+    - account_id, days_dormant, reactivation_date
+    - transaction_volume_first_7_days, transaction_count_first_7_days
+    - out_degree_first_7_days, unique_destinations_first_7_days
+    - rapid_fanout_flag, mule_signature_flag
+    - gnn_fraud_probability, propagated_risk_score, risk_level
+    """
+    try:
+        return detect_dormant_accounts(
+            limit=max(1, min(limit, 200)),
+            min_dormant_days=max(1, min_dormant_days),
+        )
+    except Exception as exc:
+        logger.error("Error in /api/graph/dormant-accounts: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Dormant account detection failed: {exc}",
+        )
