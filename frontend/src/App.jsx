@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import RiskTable from "./components/RiskTable";
 import FraudRings from "./pages/FraudRings";
 import Investigator from "./pages/Investigator";
+import Structuring from "./pages/Structuring";
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/risk" element={<RiskTable />} />
         <Route path="/rings" element={<FraudRings />} />
         <Route path="/investigator" element={<Investigator />} />
+        <Route path="/structuring" element={<Structuring />} />
       </Routes>
     </BrowserRouter>
   );

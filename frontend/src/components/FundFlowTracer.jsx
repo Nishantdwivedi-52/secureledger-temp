@@ -1,338 +1,167 @@
 /**
  * FundFlowTracer.jsx
  * ------------------
- * Path-first money-flow tracing component.
- * Displays temporally-ordered fund flow paths with risk ranking.
+ * Interactive and stable money-flow path tracer.
+ * Renders nodes as native colorful circles (matching the Risk Table)
+ * and displays rich details on node/link hover in floating tooltips.
  *
  * Light Theme — Premium Banking UI.
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import ForceGraph2D from "react-force-graph-2d";
 import { api } from "../api";
 
-// ─── colour helpers ─────────────────────────────────────────────────────────────
+// ─── Colour and Formatting Helpers ───────────────────────────────────────────
 
 function probColor(fp) {
-  if (fp > 0.8) return "#FD625E";
-  if (fp > 0.6) return "#F97316";
-  if (fp > 0.4) return "#F2C80F";
-  return "#01B8AA";
+  if (fp > 0.7) return "#FD625E"; // Red
+  if (fp > 0.4) return "#F97316"; // Amber
+  return "#10B981"; // Green
 }
 
 function riskBadge(score) {
-  if (score >= 1.0) return { bg: "#FFF5F5", color: "#FD625E", border: "#FD625E", label: "CRITICAL" };
-  if (score >= 0.7) return { bg: "#FFFBEB", color: "#D97706", border: "#F2C80F", label: "HIGH" };
-  if (score >= 0.4) return { bg: "#F0FAFF", color: "#0284C7", border: "#8AD4EB", label: "MEDIUM" };
-  return { bg: "#F0FDF9", color: "#01B8AA", border: "#01B8AA", label: "LOW" };
+  if (score >= 0.8) return { bg: "#FFF5F5", color: "#FD625E", border: "#FD625E", label: "CRITICAL" };
+  if (score >= 0.6) return { bg: "#FFFBEB", color: "#F97316", border: "#F97316", label: "HIGH" };
+  if (score >= 0.4) return { bg: "#FFFDF0", color: "#D97706", border: "#F2C80F", label: "MEDIUM" };
+  return { bg: "#F0FDF9", color: "#10B981", border: "#10B981", label: "LOW" };
 }
 
-function formatAmount(amt) {
-  if (amt >= 1_000_000) return `$${(amt / 1_000_000).toFixed(1)}M`;
-  if (amt >= 1_000) return `$${(amt / 1_000).toFixed(1)}K`;
-  return `$${amt.toFixed(2)}`;
+function formatRupees(amt) {
+  if (amt >= 10_000_000) return `₹${(amt / 10_000_000).toFixed(2)} Cr`;
+  if (amt >= 100_000) return `₹${(amt / 100_000).toFixed(2)} L`;
+  if (amt >= 1_000) return `₹${(amt / 1_000).toFixed(1)} K`;
+  return `₹${Number(amt).toLocaleString('en-IN')}`;
 }
 
 function formatTimestamp(ts) {
   if (!ts) return "—";
-  // Show time portion only for compactness
-  const parts = ts.replace("T", " ").split(" ");
-  if (parts.length >= 2) return parts[1].slice(0, 8);
-  return ts.slice(0, 19);
+  return ts.replace("T", " ").slice(0, 19);
 }
 
-// ─── Node pill component ────────────────────────────────────────────────────────
+function calculateTimeDelta(currentTs, prevTs) {
+  if (!currentTs || !prevTs) return "";
+  
+  const cleanCurrent = currentTs.includes("T") ? currentTs : currentTs.replace(" ", "T");
+  const cleanPrev = prevTs.includes("T") ? prevTs : prevTs.replace(" ", "T");
+  
+  const current = new Date(cleanCurrent);
+  const prev = new Date(cleanPrev);
+  
+  if (isNaN(current.getTime()) || isNaN(prev.getTime())) return "";
+  
+  const diffMs = current.getTime() - prev.getTime();
+  if (diffMs < 0) return "0s";
+  
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffDays > 0) {
+    const remainingHours = diffHours % 24;
+    return `${diffDays}d ${remainingHours}h`;
+  }
+  if (diffHours > 0) {
+    const remainingMins = diffMins % 60;
+    return `${diffHours}h ${remainingMins}m`;
+  }
+  if (diffMins > 0) {
+    const remainingSecs = diffSecs % 60;
+    return `${diffMins}m ${remainingSecs}s`;
+  }
+  return `${diffSecs}s`;
+}
 
-function NodePill({ node, isFirst, isLast }) {
+// ─── Tooltip Components ────────────────────────────────────────────────────────
+
+function NodeTooltip({ node, position }) {
+  if (!node) return null;
   const fp = node.fraud_prob ?? 0;
-  const color = probColor(fp);
-  const truncId = (node.account || "?").length > 10
-    ? (node.account.slice(0, 6) + "…" + node.account.slice(-4))
-    : node.account;
-
   return (
     <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center",
-      minWidth: 90, position: "relative",
+      position:     "fixed",
+      left:         position.x + 16,
+      top:          position.y - 8,
+      background:   "#FFFFFF",
+      border:       "1px solid #E2E8F0",
+      borderRadius: 12,
+      padding:      "16px 20px",
+      zIndex:       1000,
+      pointerEvents:"none",
+      minWidth:     240,
+      boxShadow:    "0 4px 16px rgba(0,0,0,0.08)",
     }}>
-      {/* Mastermind crown */}
-      {node.is_mastermind && (
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#0F172A", letterSpacing:"0.05em", marginBottom: 12, display: "flex", alignItems: "center" }}>
         <div style={{
-          fontSize: 14, marginBottom: 2, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.15))",
-        }}>👑</div>
-      )}
-
-      {/* Node circle */}
-      <div style={{
-        width: 44, height: 44, borderRadius: "50%",
-        background: `linear-gradient(135deg, ${color}, ${color}dd)`,
-        border: isFirst ? "3px solid #8B5CF6" : isLast ? "3px solid #0EA5E9" : `2px solid ${color}`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: `0 2px 8px ${color}44`,
-        transition: "transform 0.2s",
-      }}>
-        <span style={{ color: "#fff", fontSize: 10, fontWeight: 800 }}>
-          {(fp * 100).toFixed(0)}%
-        </span>
+          width: 12, height: 12,
+          backgroundColor: node.index === 0 ? "#8B5CF6" : probColor(fp),
+          borderRadius: "50%", display: "inline-block", marginRight: 8
+        }}/>
+        {node.index === 0 ? "FLOW ORIGIN" : `ROUTE NODE (HOP ${node.index})`}
       </div>
-
-      {/* Account ID */}
-      <div style={{
-        fontFamily: "monospace", fontSize: 10, fontWeight: 600,
-        color: "#0F172A", marginTop: 6, textAlign: "center",
-        maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }} title={node.account}>
-        {truncId}
-      </div>
-
-      {/* Ring badge */}
-      {node.ring_id && (
-        <div style={{
-          background: "#F3E8FF", color: "#8B5CF6", border: "1px solid rgba(139,92,246,0.3)",
-          padding: "1px 6px", borderRadius: 10, fontSize: 9, fontWeight: 700, marginTop: 3,
-        }}>
-          {node.ring_id}
+      {[
+        { label: "ACCOUNT ID", value: node.id, mono: true }, 
+        { label: "GNN FRAUD PROB", value: `${(fp * 100).toFixed(2)}%`, color: probColor(fp) },
+        { label: "CUMULATIVE RECV", value: formatRupees(node.cumulativeAmount) },
+        { label: "RING ID", value: node.ring_id ?? "—", isBadge: true }
+      ].map(({ label, value, mono, color, isBadge }) => (
+        <div key={label} style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 10, color: "#64748B", fontWeight: 700 }}>{label}</div>
+          {isBadge && value !== "—" ? (
+            <div style={{ background: "#F3E8FF", border: "1px solid rgba(139, 92, 246, 0.3)", color: "#8B5CF6", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>
+              {value}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: mono ? "monospace" : "inherit", color: color ?? "#0F172A" }}>{value}</div>
+          )}
         </div>
-      )}
+      ))}
     </div>
   );
 }
 
-// ─── Edge arrow component ───────────────────────────────────────────────────────
-
-function EdgeArrow({ tx }) {
-  const isLaunder = tx.is_laundering;
+function LinkTooltip({ link, position }) {
+  if (!link) return null;
   return (
     <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center",
-      minWidth: 80, padding: "0 4px",
+      position:     "fixed",
+      left:         position.x + 16,
+      top:          position.y - 8,
+      background:   "#FFFFFF",
+      border:       "1px solid #E2E8F0",
+      borderRadius: 12,
+      padding:      "16px 20px",
+      zIndex:       1000,
+      pointerEvents:"none",
+      minWidth:     240,
+      boxShadow:    "0 4px 16px rgba(0,0,0,0.08)",
     }}>
-      {/* Amount */}
-      <div style={{
-        fontSize: 12, fontWeight: 800,
-        color: isLaunder ? "#FD625E" : "#0F172A",
-      }}>
-        {formatAmount(tx.amount)}
-      </div>
-
-      {/* Arrow line */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 0, margin: "4px 0",
-      }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#0F172A", letterSpacing:"0.05em", marginBottom: 12, display: "flex", alignItems: "center" }}>
         <div style={{
-          height: 2, width: 50,
-          background: isLaunder
-            ? "linear-gradient(90deg, #FD625E, #FD625Eaa)"
-            : "linear-gradient(90deg, #CBD5E1, #94A3B8)",
-        }} />
-        <div style={{
-          width: 0, height: 0,
-          borderTop: "5px solid transparent",
-          borderBottom: "5px solid transparent",
-          borderLeft: `8px solid ${isLaunder ? "#FD625E" : "#94A3B8"}`,
-        }} />
+          width: 12, height: 12,
+          backgroundColor: link.is_laundering ? "#FD625E" : "#94A3B8",
+          borderRadius: "50%", display: "inline-block", marginRight: 8
+        }}/>
+        TRANSACTION INFO
       </div>
-
-      {/* Timestamp */}
-      <div style={{
-        fontSize: 10, color: "#64748B", fontWeight: 500,
-        fontFamily: "monospace",
-      }}>
-        {formatTimestamp(tx.timestamp)}
-      </div>
-
-      {/* Payment format + laundering flag */}
-      <div style={{ display: "flex", gap: 4, marginTop: 2, alignItems: "center" }}>
-        <span style={{
-          fontSize: 9, fontWeight: 700, color: "#94A3B8",
-          textTransform: "uppercase", letterSpacing: "0.04em",
-        }}>
-          {tx.payment_format || "—"}
-        </span>
-        {isLaunder && (
-          <span style={{
-            fontSize: 9, fontWeight: 800, color: "#FD625E",
-            background: "#FFF5F5", border: "1px solid #FD625E",
-            padding: "0 4px", borderRadius: 4,
-          }}>🚩</span>
-        )}
-      </div>
+      {[
+        { label: "AMOUNT", value: formatRupees(link.amount), color: link.is_laundering ? "#FD625E" : "#0F172A" }, 
+        { label: "TIMESTAMP", value: formatTimestamp(link.timestamp), mono: true },
+        { label: "TIME DELTA", value: link.timeDelta || "First Hop", color: "#8B5CF6" },
+        { label: "PAYMENT FORMAT", value: link.payment_format || "—" },
+        { label: "LAUNDERING FLAG", value: link.is_laundering ? "⚠️ FLAGGED" : "Clean", color: link.is_laundering ? "#FD625E" : "#10B981" }
+      ].map(({ label, value, mono, color }) => (
+        <div key={label} style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 10, color: "#64748B", fontWeight: 700 }}>{label}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, fontFamily: mono ? "monospace" : "inherit", color: color ?? "#0F172A" }}>{value}</div>
+        </div>
+      ))}
     </div>
   );
 }
 
-// ─── Single path card ───────────────────────────────────────────────────────────
-
-function PathCard({ pathData, index }) {
-  const [expanded, setExpanded] = useState(false);
-  const badge = riskBadge(pathData.risk_score);
-
-  return (
-    <div
-      style={{
-        background: "#FFFFFF",
-        border: `1px solid ${badge.border}33`,
-        borderLeft: `4px solid ${badge.border}`,
-        borderRadius: 14,
-        padding: "20px 24px",
-        marginBottom: 16,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
-        transition: "box-shadow 0.2s, border-color 0.2s",
-        cursor: "pointer",
-      }}
-      onClick={() => setExpanded(!expanded)}
-      onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.07)"}
-      onMouseLeave={e => e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.03)"}
-    >
-      {/* Header row */}
-      <div style={{
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        marginBottom: expanded ? 20 : 0,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* Rank */}
-          <div style={{
-            width: 32, height: 32, borderRadius: "50%",
-            background: badge.bg, border: `1px solid ${badge.border}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 14, fontWeight: 800, color: badge.color,
-          }}>
-            {index + 1}
-          </div>
-
-          {/* Path summary */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>
-                {pathData.hop_count} hop{pathData.hop_count !== 1 ? "s" : ""}
-              </span>
-              <span style={{
-                background: badge.bg, color: badge.color,
-                border: `1px solid ${badge.border}`,
-                padding: "2px 8px", borderRadius: 12,
-                fontSize: 10, fontWeight: 800, letterSpacing: "0.05em",
-              }}>
-                {badge.label}
-              </span>
-              {pathData.direction && (
-                <span style={{
-                  fontSize: 10, fontWeight: 600, color: "#94A3B8",
-                  textTransform: "uppercase",
-                }}>
-                  {pathData.direction === "outbound" ? "▸ OUT" : "◂ IN"}
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 12, color: "#64748B", fontWeight: 500, marginTop: 2 }}>
-              Risk: {pathData.risk_score.toFixed(4)} · Max fraud: {(pathData.max_fraud_prob * 100).toFixed(1)}%
-              {pathData.total_laundering_hops > 0 && (
-                <span style={{ color: "#FD625E", fontWeight: 700 }}>
-                  {" "}· {pathData.total_laundering_hops} laundering hop{pathData.total_laundering_hops > 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Amounts */}
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 11, color: "#64748B", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            Total Amount
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#0F172A" }}>
-            {formatAmount(pathData.total_amount)}
-          </div>
-          <div style={{ fontSize: 11, color: "#94A3B8", fontWeight: 500 }}>
-            Terminal: {formatAmount(pathData.terminal_amount)}
-          </div>
-        </div>
-      </div>
-
-      {/* Expanded: full path visualization */}
-      {expanded && (
-        <div style={{
-          overflowX: "auto",
-          padding: "16px 0",
-        }}>
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "flex-start",
-            gap: 0, minWidth: "fit-content",
-          }}>
-            {pathData.path.map((node, ni) => (
-              <div key={ni} style={{ display: "flex", alignItems: "center" }}>
-                <NodePill
-                  node={node}
-                  isFirst={ni === 0}
-                  isLast={ni === pathData.path.length - 1}
-                />
-                {ni < pathData.transactions.length && (
-                  <EdgeArrow tx={pathData.transactions[ni]} />
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Detailed transaction table */}
-          <div style={{
-            marginTop: 16, background: "#F8FAFC",
-            borderRadius: 10, border: "1px solid #E2E8F0",
-            overflow: "hidden",
-          }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: "#F1F5F9", borderBottom: "1px solid #E2E8F0" }}>
-                  {["Hop", "From", "To", "Amount", "Time", "Format", "Flag"].map(h => (
-                    <th key={h} style={{
-                      textAlign: "left", padding: "8px 12px",
-                      fontSize: 10, fontWeight: 700, color: "#64748B",
-                      textTransform: "uppercase", letterSpacing: "0.04em",
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {pathData.transactions.map((tx, ti) => (
-                  <tr key={ti} style={{
-                    borderBottom: "1px solid #E2E8F0",
-                    background: tx.is_laundering ? "#FFF5F5" : "transparent",
-                  }}>
-                    <td style={{ padding: "8px 12px", fontWeight: 700, color: "#0F172A" }}>{ti + 1}</td>
-                    <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11, color: "#0F172A" }}>
-                      {(tx.from || "").slice(0, 10)}…
-                    </td>
-                    <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11, color: "#0F172A" }}>
-                      {(tx.to || "").slice(0, 10)}…
-                    </td>
-                    <td style={{ padding: "8px 12px", fontWeight: 700, color: "#0F172A" }}>
-                      {formatAmount(tx.amount)}
-                    </td>
-                    <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11, color: "#64748B" }}>
-                      {tx.timestamp?.slice(0, 19) || "—"}
-                    </td>
-                    <td style={{ padding: "8px 12px", fontSize: 10, fontWeight: 600, color: "#94A3B8" }}>
-                      {tx.payment_format || "—"}
-                    </td>
-                    <td style={{ padding: "8px 12px" }}>
-                      {tx.is_laundering ? (
-                        <span style={{
-                          background: "#FFF5F5", color: "#FD625E", border: "1px solid #FD625E",
-                          padding: "2px 6px", borderRadius: 4, fontSize: 9, fontWeight: 800,
-                        }}>FLAGGED</span>
-                      ) : (
-                        <span style={{ color: "#01B8AA", fontWeight: 600, fontSize: 10 }}>Clean</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Loading skeleton ───────────────────────────────────────────────────────────
+// ─── Loading Skeleton ──────────────────────────────────────────────────────────
 
 function PathSkeleton() {
   return (
@@ -359,16 +188,31 @@ function PathSkeleton() {
   );
 }
 
-// ─── Main component ─────────────────────────────────────────────────────────────
+// ─── Main Component ─────────────────────────────────────────────────────────────
 
 export default function FundFlowTracer({ prefilledAccount }) {
   const [accountId, setAccountId] = useState(prefilledAccount || "");
   const [depth, setDepth]         = useState(3);
-  const [direction, setDirection] = useState("outbound");
+  const [direction, setDirection] = useState("both");
   const [loading, setLoading]     = useState(false);
   const [result, setResult]       = useState(null);
   const [error, setError]         = useState(null);
-  const inputRef = useRef(null);
+
+  // Active path and animation states
+  const [selectedPathIndex, setSelectedPathIndex] = useState(0);
+  const [activeHop, setActiveHop]                 = useState(-1);
+  const [isPlaying, setIsPlaying]                 = useState(false);
+  const [playbackSpeed, setPlaybackSpeed]         = useState(2000); // ms per hop
+  
+  // Tooltip tracking
+  const [hoveredNode, setHoveredNode]             = useState(null);
+  const [hoveredLink, setHoveredLink]             = useState(null);
+  const [mousePos, setMousePos]                   = useState({ x: 0, y: 0 });
+
+  // Width tracking for force graph responsive sizing
+  const [graphWidth, setGraphWidth] = useState(700);
+  const graphContainerRef = useRef(null);
+  const fgRef = useRef(null);
 
   // Sync prefilled account
   useEffect(() => {
@@ -377,11 +221,35 @@ export default function FundFlowTracer({ prefilledAccount }) {
     }
   }, [prefilledAccount]);
 
+  // Track global mouse position for tooltip positioning
+  useEffect(() => {
+    const onMove = e => setMousePos({ x: e.clientX, y: e.clientY });
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
+
+  // Window resize handler
+  useEffect(() => {
+    if (graphContainerRef.current) {
+      setGraphWidth(graphContainerRef.current.offsetWidth);
+    }
+    const handleResize = () => {
+      if (graphContainerRef.current) {
+        setGraphWidth(graphContainerRef.current.offsetWidth);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [result]);
+
   const trace = async () => {
     if (!accountId.trim()) return;
     setLoading(true);
     setError(null);
     setResult(null);
+    setSelectedPathIndex(0);
+    setActiveHop(-1);
+    setIsPlaying(false);
 
     try {
       const r = await api.get(`/api/account/${encodeURIComponent(accountId.trim())}/flow`, {
@@ -389,6 +257,11 @@ export default function FundFlowTracer({ prefilledAccount }) {
         headers: { "ngrok-skip-browser-warning": "true" },
       });
       setResult(r.data);
+      if (r.data?.paths?.length > 0) {
+        // Auto play the first path
+        setActiveHop(0);
+        setIsPlaying(true);
+      }
     } catch (err) {
       const msg = err.response?.data?.detail || err.message || "Failed to trace fund flows.";
       setError(msg);
@@ -397,15 +270,111 @@ export default function FundFlowTracer({ prefilledAccount }) {
     }
   };
 
+  // Timer loop for animation
+  useEffect(() => {
+    if (!isPlaying || !result || !result.paths || result.paths.length === 0) return;
+    const path = result.paths[selectedPathIndex];
+    if (!path) return;
+    
+    const maxHops = path.transactions.length;
+    const interval = setInterval(() => {
+      setActiveHop(prev => {
+        if (prev >= maxHops - 1) {
+          return 0; // loop back
+        }
+        return prev + 1;
+      });
+    }, playbackSpeed);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, result, selectedPathIndex, playbackSpeed]);
+
+  // Reset animation if path changes
+  const handleSelectPath = (index) => {
+    setSelectedPathIndex(index);
+    setActiveHop(0);
+    setIsPlaying(true);
+  };
+
+  // Memoize graph data to keep references stable so nodes don't fly on ticks
+  const graphData = useMemo(() => {
+    if (!result || !result.paths || result.paths.length === 0) {
+      return { nodes: [], links: [] };
+    }
+    const pathData = result.paths[selectedPathIndex];
+    if (!pathData) return { nodes: [], links: [] };
+
+    // Format nodes
+    const nodes = pathData.path.map((node, idx) => {
+      let cumulativeAmount = 0;
+      for (let j = 0; j < idx; j++) {
+        cumulativeAmount += pathData.transactions[j]?.amount || 0;
+      }
+
+      return {
+        id: node.account,
+        label: node.account,
+        fraud_prob: node.fraud_prob ?? 0,
+        ring_id: node.ring_id,
+        is_mastermind: node.is_mastermind,
+        cumulativeAmount,
+        index: idx,
+        // Align horizontally centered and fix coordinates to prevent flying
+        fx: (idx - (pathData.path.length - 1) / 2) * 230,
+        fy: 0,
+      };
+    });
+
+    // Format links
+    const links = pathData.transactions.map((tx, idx) => {
+      const timeDelta = idx > 0 
+        ? calculateTimeDelta(tx.timestamp, pathData.transactions[idx - 1].timestamp)
+        : "";
+
+      return {
+        source: tx.from,
+        target: tx.to,
+        amount: tx.amount,
+        timestamp: tx.timestamp,
+        timeDelta,
+        is_laundering: tx.is_laundering,
+        payment_format: tx.payment_format || "TRANSFER",
+        hopIndex: idx,
+      };
+    });
+
+    return { nodes, links };
+  }, [result, selectedPathIndex]);
+
+  // Center the camera on data load
+  useEffect(() => {
+    if (fgRef.current && result && result.paths?.length > 0) {
+      setTimeout(() => {
+        fgRef.current.zoomToFit(200, 100);
+      }, 350);
+    }
+  }, [selectedPathIndex, result]);
+
+  // Node Color Rule
+  const getNodeColor = useCallback((node) => {
+    if (node.index === 0) return "#8B5CF6"; // Flow Origin is always purple
+    return probColor(node.fraud_prob);
+  }, []);
+
+  const activePath = result?.paths[selectedPathIndex];
+  const activeTx = activePath?.transactions[activeHop];
+  const activeNodeFrom = activePath?.path[activeHop];
+  const activeNodeTo = activePath?.path[activeHop + 1];
+
   const directions = [
+    { value: "both",     label: "◂▸ Both",     desc: "Inbound & Outbound" },
     { value: "outbound", label: "▸ Outbound", desc: "Where did money go?" },
     { value: "inbound",  label: "◂ Inbound",  desc: "Where did money come from?" },
-    { value: "both",     label: "◂▸ Both",     desc: "Full picture" },
   ];
 
   return (
     <div>
-      {/* ── Controls ─────────────────────────────────────────────────── */}
+      {/* ── Controls Section ─────────────────────────────────────────── */}
       <div style={{
         display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap", alignItems: "flex-end",
       }}>
@@ -417,11 +386,10 @@ export default function FundFlowTracer({ prefilledAccount }) {
             letterSpacing: "0.05em", marginBottom: 6,
           }}>Account ID</label>
           <input
-            ref={inputRef}
             value={accountId}
             onChange={e => setAccountId(e.target.value)}
             onKeyDown={e => e.key === "Enter" && trace()}
-            placeholder="Enter account ID…"
+            placeholder="Enter account ID (e.g. 3c50a53368acc4a9)…"
             style={{
               width: "100%", boxSizing: "border-box",
               background: "#FFFFFF", border: "1px solid #E2E8F0",
@@ -459,7 +427,7 @@ export default function FundFlowTracer({ prefilledAccount }) {
           </select>
         </div>
 
-        {/* Direction toggle */}
+        {/* Direction Toggle */}
         <div style={{ flex: "0 0 auto" }}>
           <label style={{
             display: "block", fontSize: 11, fontWeight: 700,
@@ -529,14 +497,13 @@ export default function FundFlowTracer({ prefilledAccount }) {
         <div>
           <PathSkeleton />
           <PathSkeleton />
-          <PathSkeleton />
         </div>
       )}
 
-      {/* ── Results ──────────────────────────────────────────────────── */}
+      {/* ── Result Dashboard ─────────────────────────────────────────── */}
       {result && !loading && (
         <div>
-          {/* Summary bar */}
+          {/* Metadata Row */}
           <div style={{
             display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap", alignItems: "center",
           }}>
@@ -551,27 +518,19 @@ export default function FundFlowTracer({ prefilledAccount }) {
               background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10,
               padding: "10px 16px", fontSize: 13, fontWeight: 600, color: "#0F172A",
             }}>
-              <span style={{ color: "#64748B", fontWeight: 500 }}>Candidates evaluated: </span>
+              <span style={{ color: "#64748B", fontWeight: 500 }}>Evaluated candidates: </span>
               <span style={{ fontWeight: 800 }}>{result.candidates_before_filter}</span>
             </div>
-            <div style={{
-              background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10,
-              padding: "10px 16px", fontSize: 13, fontWeight: 600, color: "#0F172A",
-            }}>
-              <span style={{ color: "#64748B", fontWeight: 500 }}>Depth: </span>
-              <span style={{ fontWeight: 800 }}>{result.depth}</span>
-            </div>
-            {result.truncated && (
+            {result.mock && (
               <div style={{
-                background: "#FFFBEB", border: "1px solid #F2C80F", borderRadius: 10,
+                background: "#FEF3C7", border: "1px solid #F59E0B", borderRadius: 10,
                 padding: "10px 16px", fontSize: 13, fontWeight: 700, color: "#D97706",
               }}>
-                ⚠ Results truncated — increase max_paths for more
+                ℹ DEMO MOCK MODE (Neo4j Offline)
               </div>
             )}
           </div>
 
-          {/* Path cards */}
           {result.paths.length === 0 ? (
             <div style={{
               textAlign: "center", padding: "60px 20px",
@@ -580,24 +539,353 @@ export default function FundFlowTracer({ prefilledAccount }) {
             }}>
               <div style={{ fontSize: 36, marginBottom: 16 }}>🔍</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: "#0F172A", marginBottom: 8 }}>
-                No Temporally Valid Paths Found
+                No Flow Paths Found
               </div>
               <div style={{ fontSize: 14, color: "#64748B", maxWidth: 400, margin: "0 auto", lineHeight: 1.6 }}>
-                {result.candidates_before_filter > 0
-                  ? `${result.candidates_before_filter} candidate path${result.candidates_before_filter > 1 ? "s were" : " was"} evaluated, but none satisfied temporal ordering (t₁ ≤ t₂ ≤ t₃).`
-                  : "No transaction paths exist from this account at the specified depth."
-                }
+                No transaction paths satisfy the temporal ordering checks from/to this account.
               </div>
             </div>
           ) : (
-            result.paths.map((p, i) => (
-              <PathCard key={i} pathData={p} index={i} />
-            ))
+            /* Split Screen Layout */
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(300px, 1fr) 2fr",
+              gap: 24,
+              alignItems: "stretch",
+            }}>
+              
+              {/* Left Column: Ranked Paths List */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 600, overflowY: "auto", paddingRight: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#64748B", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>
+                  Ranked Paths ({result.paths.length})
+                </div>
+                {result.paths.map((p, idx) => {
+                  const isSelected = idx === selectedPathIndex;
+                  const badge = riskBadge(p.risk_score);
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => handleSelectPath(idx)}
+                      style={{
+                        background: isSelected ? "#F8FAFC" : "#FFFFFF",
+                        border: isSelected ? "2px solid #8B5CF6" : `1px solid ${badge.border}33`,
+                        borderLeft: isSelected ? "6px solid #8B5CF6" : `4px solid ${badge.border}`,
+                        borderRadius: 12,
+                        padding: "16px 18px",
+                        cursor: "pointer",
+                        boxShadow: isSelected ? "0 4px 12px rgba(139,92,246,0.1)" : "0 2px 6px rgba(0,0,0,0.02)",
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={e => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = "#CBD5E1";
+                          e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.05)";
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = `${badge.border}33`;
+                          e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.02)";
+                        }
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{
+                            width: 22, height: 22, borderRadius: "50%",
+                            background: isSelected ? "#8B5CF6" : badge.bg,
+                            color: isSelected ? "#FFFFFF" : badge.color,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 11, fontWeight: 800,
+                          }}>
+                            {idx + 1}
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>
+                            {p.hop_count} Hop{p.hop_count !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <span style={{
+                          background: badge.bg, color: badge.color,
+                          border: `1px solid ${badge.border}`,
+                          padding: "1px 6px", borderRadius: 8,
+                          fontSize: 9, fontWeight: 800,
+                        }}>
+                          {badge.label}
+                        </span>
+                      </div>
+                      
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                        <div style={{ fontSize: 11, color: "#64748B" }}>
+                          Max Prob: {(p.max_fraud_prob * 100).toFixed(1)}%
+                          {p.direction && (
+                            <span style={{ marginLeft: 6, fontWeight: 700, color: p.direction === "outbound" ? "#0EA5E9" : "#8B5CF6" }}>
+                              {p.direction === "outbound" ? "▸ OUT" : "◂ IN"}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontSize: 10, color: "#94A3B8", display: "block" }}>Total Flow</span>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{formatRupees(p.total_amount)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Right Column: Visualizer Canvas & Animation Controls */}
+              <div 
+                ref={graphContainerRef} 
+                style={{
+                  background: "#FFFFFF",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 16,
+                  padding: 24,
+                  display: "flex",
+                  flexDirection: "column",
+                  boxShadow: "0 2px 10px rgba(0,0,0,0.01)",
+                }}
+              >
+                
+                {/* Visualizer Header with selected path info */}
+                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, color: "#0F172A", margin: 0 }}>
+                      Flow Path Chain — Rank #{selectedPathIndex + 1}
+                    </h3>
+                    <p style={{ fontSize: 12, color: "#64748B", margin: "4px 0 0" }}>
+                      Risk Score: {activePath?.risk_score.toFixed(4)} · Total Flow: {formatRupees(activePath?.total_amount)}
+                    </p>
+                  </div>
+                  
+                  {/* Animation status bubble */}
+                  {isPlaying && activeTx && (
+                    <div style={{
+                      background: "#F5F3FF", border: "1px solid #C4B5FD", borderRadius: 8,
+                      padding: "6px 12px", display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <div style={{ width: 8, height: 8, background: "#8B5CF6", borderRadius: "50%", animation: "pulse 1.2s infinite" }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#5B21B6", fontFamily: "monospace" }}>
+                        HOP {activeHop + 1}/{activePath.transactions.length} ACTIVE
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Animation Control Panel ── */}
+                <div style={{
+                  background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12,
+                  padding: "16px 20px", marginBottom: 20,
+                  display: "flex", flexDirection: "column", gap: 12,
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                    
+                    {/* Controls */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <button
+                        onClick={() => { setActiveHop(0); setIsPlaying(false); }}
+                        title="Reset to start"
+                        style={{
+                          background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: 8,
+                          width: 34, height: 34, cursor: "pointer", fontSize: 14, display: "flex",
+                          alignItems: "center", justifyContent: "center", transition: "all 0.15s",
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "#F1F5F9"}
+                        onMouseLeave={e => e.currentTarget.style.background = "#FFFFFF"}
+                      >
+                        ⏮
+                      </button>
+                      <button
+                        onClick={() => {
+                          setActiveHop(prev => Math.max(0, prev - 1));
+                          setIsPlaying(false);
+                        }}
+                        disabled={activeHop <= 0}
+                        title="Previous Hop"
+                        style={{
+                          background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: 8,
+                          width: 34, height: 34, cursor: "pointer", fontSize: 14, display: "flex",
+                          alignItems: "center", justifyContent: "center", transition: "all 0.15s",
+                          opacity: activeHop <= 0 ? 0.5 : 1,
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "#F1F5F9"}
+                        onMouseLeave={e => e.currentTarget.style.background = "#FFFFFF"}
+                      >
+                        ◀
+                      </button>
+                      <button
+                        onClick={() => setIsPlaying(!isPlaying)}
+                        title={isPlaying ? "Pause animation" : "Play animation"}
+                        style={{
+                          background: isPlaying ? "#F59E0B" : "#10B981",
+                          border: "none", borderRadius: 8, color: "#FFFFFF",
+                          padding: "0 16px", height: 34, cursor: "pointer",
+                          fontSize: 12, fontWeight: 800, display: "flex",
+                          alignItems: "center", gap: 6, transition: "all 0.15s",
+                        }}
+                      >
+                        {isPlaying ? <>⏸ Pause</> : <>▶ Play</>}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const maxHops = activePath?.transactions.length || 0;
+                          setActiveHop(prev => Math.min(maxHops - 1, prev + 1));
+                          setIsPlaying(false);
+                        }}
+                        disabled={activeHop >= (activePath?.transactions.length || 1) - 1}
+                        title="Next Hop"
+                        style={{
+                          background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: 8,
+                          width: 34, height: 34, cursor: "pointer", fontSize: 14, display: "flex",
+                          alignItems: "center", justifyContent: "center", transition: "all 0.15s",
+                          opacity: activeHop >= (activePath?.transactions.length || 1) - 1 ? 0.5 : 1,
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "#F1F5F9"}
+                        onMouseLeave={e => e.currentTarget.style.background = "#FFFFFF"}
+                      >
+                        ▶
+                      </button>
+                    </div>
+
+                    {/* Playback speed buttons */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "#64748B", marginRight: 4 }}>Speed:</span>
+                      {[
+                        { label: "0.5x", value: 3500 },
+                        { label: "1x",   value: 2000 },
+                        { label: "2x",   value: 900 },
+                      ].map(sp => {
+                        const isCurrent = playbackSpeed === sp.value;
+                        return (
+                          <button
+                            key={sp.label}
+                            onClick={() => setPlaybackSpeed(sp.value)}
+                            style={{
+                              background: isCurrent ? "#8B5CF6" : "#FFFFFF",
+                              border: isCurrent ? "1px solid #8B5CF6" : "1px solid #CBD5E1",
+                              color: isCurrent ? "#FFFFFF" : "#64748B",
+                              padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                              cursor: "pointer", transition: "all 0.15s",
+                            }}
+                          >
+                            {sp.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Active Hop Details Description */}
+                  {activeTx ? (
+                    <div style={{
+                      borderLeft: `4px solid ${activeTx.is_laundering ? "#FD625E" : "#8B5CF6"}`,
+                      background: "#FFFFFF", padding: "10px 14px", borderRadius: "0 8px 8px 0",
+                      fontSize: 12.5, color: "#0F172A", lineHeight: 1.5,
+                    }}>
+                      <strong>Hop {activeHop + 1}: </strong>
+                      <span style={{ fontFamily: "monospace", color: "#64748B" }}>{(activeNodeFrom?.account || "").slice(0, 8)}…</span>
+                      {" sent "}
+                      <strong style={{ color: activeTx.is_laundering ? "#FD625E" : "#0F172A" }}>{formatRupees(activeTx.amount)}</strong>
+                      {" to "}
+                      <span style={{ fontFamily: "monospace", color: "#64748B" }}>{(activeNodeTo?.account || "").slice(0, 8)}…</span>
+                      {" via "}<strong>{activeTx.payment_format}</strong>
+                      {activeTx.timeDelta && <span> (delta: <strong style={{ color: "#8B5CF6" }}>{activeTx.timeDelta}</strong>)</span>}
+                      {activeTx.is_laundering && <span style={{ marginLeft: 8, color: "#FD625E", fontWeight: 800 }}>⚠️ LAUNDERING FLAGGED</span>}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12.5, color: "#64748B", fontStyle: "italic", textAlign: "center" }}>
+                      Press Play or select a hop to view flow details and animation
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Force Graph Visualisation Area ── */}
+                <div style={{
+                  background: "#F8FAFC",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  position: "relative",
+                  height: 400,
+                }}>
+                  <ForceGraph2D
+                    ref={fgRef}
+                    graphData={graphData}
+                    width={graphWidth - 48} // deduct padding
+                    height={400}
+                    backgroundColor="#F8FAFC"
+                    
+                    // Native Node Circle styling (identical to RiskTable/GraphViz)
+                    nodeColor={getNodeColor}
+                    nodeVal={node => node.index === 0 ? 16 : 10}
+                    onNodeHover={node => setHoveredNode(node ?? null)}
+                    
+                    // Native Link lines styling
+                    linkColor={link => link.hopIndex === activeHop ? "#8B5CF6" : (link.is_laundering ? "rgba(253, 98, 94, 0.45)" : "rgba(148, 163, 184, 0.25)")}
+                    linkWidth={link => link.hopIndex === activeHop ? 3.5 : 1.5}
+                    onLinkHover={link => setHoveredLink(link ?? null)}
+
+                    // Arrow settings
+                    linkDirectionalArrowLength={6}
+                    linkDirectionalArrowColor={link => link.hopIndex === activeHop ? "#8B5CF6" : (link.is_laundering ? "rgba(253, 98, 94, 0.6)" : "rgba(148, 163, 184, 0.4)")}
+                    linkDirectionalArrowRelPos={1}
+                    
+                    // Particles animation
+                    linkDirectionalParticles={link => (link.hopIndex === activeHop ? 6 : 0)}
+                    linkDirectionalParticleWidth={4}
+                    linkDirectionalParticleSpeed={0.012}
+                    linkDirectionalParticleColor={link => (link.is_laundering ? "#FD625E" : "#8B5CF6")}
+                    
+                    // Layout forces adjustment (we want horizontal spacing)
+                    cooldownTicks={60}
+                    onEngineStop={() => {
+                      if (fgRef.current) {
+                        fgRef.current.zoomToFit(200, 100);
+                      }
+                    }}
+                  />
+                  
+                  {/* Legend Overlay */}
+                  <div style={{
+                    position: "absolute", bottom: 12, left: 12,
+                    background: "rgba(255, 255, 255, 0.9)", border: "1px solid #E2E8F0",
+                    borderRadius: 8, padding: "8px 12px", zIndex: 10,
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                  }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "#64748B", letterSpacing: "0.05em", marginBottom: 6 }}>GNN FRAUD RISK</div>
+                    <div style={{ display: "flex", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#8B5CF6" }} />
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#0F172A" }}>Flow Origin</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#FD625E" }} />
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#0F172A" }}>Critical (&gt;70%)</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#F97316" }} />
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#0F172A" }}>High (&gt;40%)</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981" }} />
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#0F172A" }}>Low</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
           )}
         </div>
       )}
 
-      {/* ── Empty state ──────────────────────────────────────────────── */}
+      {/* Floating Tooltips */}
+      <NodeTooltip node={hoveredNode} position={mousePos} />
+      <LinkTooltip link={hoveredLink} position={mousePos} />
+
+      {/* ── Empty State ──────────────────────────────────────────────── */}
       {!result && !loading && !error && (
         <div style={{
           textAlign: "center", padding: "60px 20px",
@@ -613,14 +901,22 @@ export default function FundFlowTracer({ prefilledAccount }) {
             <div style={{ fontSize: 24 }}>🔎</div>
           </div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "#0F172A", marginBottom: 8 }}>
-            Temporal Fund Flow Tracer
+            Interactive Fund Flow Tracer
           </div>
-          <div style={{ fontSize: 14, color: "#64748B", maxWidth: 420, margin: "0 auto", lineHeight: 1.6 }}>
-            Enter an account ID and trace how money flows through the transaction network.
-            Paths are temporally validated (t₁ ≤ t₂ ≤ t₃) and ranked by risk score.
+          <div style={{ fontSize: 14, color: "#64748B", maxWidth: 450, margin: "0 auto", lineHeight: 1.6 }}>
+            Enter an Account ID and click <strong>Trace Flows</strong> to visualize where its money went and where it came from.
+            Observe the hop-by-hop money flows, GNN fraud scores, and time deltas.
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes pulse {
+          0% { transform: scale(0.95); opacity: 0.8; }
+          50% { transform: scale(1.05); opacity: 1; }
+          100% { transform: scale(0.95); opacity: 0.8; }
+        }
+      `}</style>
     </div>
   );
 }

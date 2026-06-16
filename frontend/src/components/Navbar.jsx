@@ -13,6 +13,7 @@ const LINKS = [
   { to: "/risk",        label: "Risk Table"  },
   { to: "/rings",       label: "Fraud Rings" },
   { to: "/investigator",label: "Investigator"},
+  { to: "/structuring", label: "Structuring" },
 ];
 
 export default function Navbar() {

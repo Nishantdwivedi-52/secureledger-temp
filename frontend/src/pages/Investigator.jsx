@@ -58,6 +58,15 @@ export default function Investigator() {
     api.get('/api/masterminds', config)
       .then(r => setMasterminds(r.data || []))
       .catch(err => console.error("Masterminds fetch error:", err));
+
+    // Read URL query params
+    const params = new URLSearchParams(window.location.search);
+    const acc = params.get("account");
+    if (acc) {
+      setFlowAccount(acc);
+      // set explain target to have dummy info so panel can open if needed
+      setExplainTarget({ id: acc, fraud_prob: 0.85, anomaly_score: 0.85 });
+    }
   }, []);
 
   const downloadReport = async (ringId) => {

@@ -30,6 +30,7 @@ from graph.graph_queries import (
     get_ring_transactions,
     get_top_masterminds,
     get_fund_flow_paths,
+    detect_structuring_patterns,
 )
 from ml.evidence import (
     generate_evidence,
@@ -330,6 +331,11 @@ def fund_flow_paths(
 @app.get("/api/graph/mule-accounts", tags=["Graph Analytics"])
 def mule_accounts():
     return detect_mule_accounts()
+
+
+@app.get("/api/graph/structuring", tags=["Graph Analytics"])
+def structuring():
+    return detect_structuring_patterns()
 
 
 @app.get("/api/masterminds", tags=["Graph Analytics"])
