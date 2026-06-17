@@ -32,6 +32,7 @@ from graph.graph_queries import (
     get_fund_flow_paths,
     detect_structuring_patterns,
     detect_dormant_accounts,
+    get_kyc_mismatches,
 )
 from ml.evidence import (
     generate_evidence,
@@ -448,4 +449,27 @@ def get_dormant_accounts(
         raise HTTPException(
             status_code=500,
             detail=f"Dormant account detection failed: {exc}",
+        )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 5. KYC BEHAVIOUR MISMATCH (TASK 19)
+# ────────────────────────────────────────────────────────────────────────────────
+@app.get("/api/graph/kyc-mismatches", tags=["Graph Analytics"])
+def get_kyc_mismatches_endpoint(
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """
+    Return accounts whose transactional behaviour deviates from their KYC peer group.
+    Results are pre-calculated by the ML pipeline (ml/kyc_mismatch.py).
+    """
+    try:
+        return get_kyc_mismatches(
+            limit=max(1, min(limit, 200)),
+        )
+    except Exception as exc:
+        logger.error("Error in /api/graph/kyc-mismatches: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"KYC Mismatch retrieval failed: {exc}",
         )

@@ -909,12 +909,20 @@ def main() -> None:
     ens_max = ensemble_scores.max()
     ensemble_scores = ((ensemble_scores - ens_min) / (ens_max - ens_min + 1e-8)).astype(np.float32)
 
+    # ── Re-calculate threshold using ensemble scores on the VALIDATION set ────
+    # The previous best_threshold was selected on GNN-only probabilities.
+    # We must select a new threshold on the re-normalized ensemble scores
+    # using ONLY the validation set, to avoid test set leakage.
+    y_true_val_ens = labels_np[val_idx]
+    y_ens_val = ensemble_scores[val_idx]
+    ensemble_threshold, _ = find_best_threshold(y_true_val_ens, y_ens_val, beta=1.0)
+
     # ── Apply threshold chosen on VALIDATION set to the TEST set ──────────────
-    # [FIX-5] We use best_threshold (selected on val) instead of re-optimising
+    # We use ensemble_threshold (selected on val) instead of re-optimising
     # on test scores. Re-optimising on test would inflate reported F1.
     y_true_test = labels_np[test_idx]
     y_ens_test  = ensemble_scores[test_idx]
-    y_pred_test = (y_ens_test >= best_threshold).astype(int)
+    y_pred_test = (y_ens_test >= ensemble_threshold).astype(int)
 
     precision = precision_score(y_true_test, y_pred_test, zero_division=0)
     recall    = recall_score(   y_true_test, y_pred_test, zero_division=0)
@@ -931,7 +939,7 @@ def main() -> None:
     logger.info("\n%s", "=" * 60)
     logger.info("=== MODEL EVALUATION (test set — zero leakage) ===")
     logger.info("")
-    logger.info("Best Threshold : %.2f  (selected on validation set)", best_threshold)
+    logger.info("Best Threshold : %.2f  (selected on validation set)", ensemble_threshold)
     logger.info("")
     logger.info("Precision : %.4f", precision)
     logger.info("Recall    : %.4f", recall)
@@ -949,7 +957,7 @@ def main() -> None:
     # ── Save metrics file (read by /api/stats) ─────────────────────────────────
     with open(CFG["metrics_path"], "w") as f:
         f.write("=== MODEL EVALUATION ===\n\n")
-        f.write(f"Best Threshold : {best_threshold:.2f}\n\n")
+        f.write(f"Best Threshold : {ensemble_threshold:.2f}\n\n")
         f.write(f"Precision : {precision:.4f}\n")
         f.write(f"Recall    : {recall:.4f}\n")
         f.write(f"F1 Score  : {f1:.4f}\n\n")
@@ -965,7 +973,7 @@ def main() -> None:
     # ── Save best threshold ────────────────────────────────────────────────────
     with open(CFG["threshold_path"], "w") as f:
         json.dump({
-            "threshold":       best_threshold,
+            "threshold":       ensemble_threshold,
             "threshold_source": "validation_set",
             "gnn_weight":      CFG["gnn_weight"],
             "iforest_weight":  CFG["iforest_weight"],

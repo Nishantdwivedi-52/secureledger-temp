@@ -15,6 +15,7 @@ const LINKS = [
   { to: "/investigator",label: "Investigator" },
   { to: "/structuring", label: "Structuring"  },
   { to: "/dormant",     label: "Dormant Accts"},
+  { to: "/kyc",         label: "KYC Mismatch" },
 ];
 
 export default function Navbar() {

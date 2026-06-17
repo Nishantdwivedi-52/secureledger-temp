@@ -6,6 +6,7 @@ import FraudRings from "./pages/FraudRings";
 import Investigator from "./pages/Investigator";
 import Structuring from "./pages/Structuring";
 import DormantAccounts from "./pages/DormantAccounts";
+import KYCMismatch from "./pages/KYCMismatch";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/investigator" element={<Investigator />} />
         <Route path="/structuring" element={<Structuring />} />
         <Route path="/dormant" element={<DormantAccounts />} />
+        <Route path="/kyc" element={<KYCMismatch />} />
       </Routes>
     </BrowserRouter>
   );

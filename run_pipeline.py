@@ -611,8 +611,22 @@ def run_gnn() -> None:
         module.main()
 
 
+def run_kyc_mismatch_step() -> None:
+    """Step 7 — Detect KYC behaviour mismatches."""
+    spec = importlib.util.spec_from_file_location(
+        "kyc_mismatch",
+        "ml/kyc_mismatch.py"
+    )
+
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(module)                 # type: ignore[union-attr]
+
+    if hasattr(module, "run_kyc_mismatch"):
+        module.run_kyc_mismatch()
+
+
 def run_louvain() -> None:
-    """Step 7 — Detect fraud rings via Louvain community detection."""
+    """Step 8 — Detect fraud rings via Louvain community detection."""
     
     spec = importlib.util.spec_from_file_location(
         "ring_detection",
@@ -683,6 +697,13 @@ def build_pipeline(args: argparse.Namespace) -> list[PipelineStep]:
         ),
         PipelineStep(
             number=7,
+            name="KYC Mismatch Detection",
+            description="Detect behavioural outliers relative to dynamically clustered KYC peer groups",
+            module_path="ml/kyc_mismatch.py",
+            runner=run_kyc_mismatch_step,
+        ),
+        PipelineStep(
+            number=8,
             name="Fraud Ring Detection",
             description="Run Louvain community detection to identify fraud rings",
             module_path="ml/ring_detection.py",

@@ -2073,6 +2073,137 @@ def detect_dormant_accounts(
     return results_raw
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# TASK 19: KYC BEHAVIOUR MISMATCH ENGINE
+# ════════════════════════════════════════════════════════════════════════════════
+
+def get_kyc_mismatches(limit: int = 50) -> list[dict]:
+    """
+    Returns accounts flagged by the KYC Behaviour Mismatch Engine (Task 19).
+    Reads the pre-computed results from ml/kyc_mismatch_results.json.
+    Provides mock fallback data if the file is missing (e.g. pipeline not run yet)
+    so the UI can still be previewed.
+    """
+    import json
+    import os
+
+    results_file = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "ml", "kyc_mismatch_results.json",
+    )
+
+    try:
+        if os.path.exists(results_file):
+            with open(results_file, "r") as f:
+                data = json.load(f)
+                return data.get("results", [])[:limit]
+    except Exception as exc:
+        logger.error("Failed to load KYC mismatch results: %s", exc)
+
+    # Fallback / mock data if file is missing
+    logger.info("Providing mock KYC mismatch data as fallback.")
+    mock_data = [
+        {
+            "account_id": "ACCT_KYC_001",
+            "composite_score": 0.9214,
+            "risk_level": "CRITICAL",
+            "peer_group": 3,
+            "peer_group_name": "High-Value Receiver",
+            "triggers": ["multi_dim_zscore", "income_mismatch", "gnn_agreement"],
+            "n_triggers": 3,
+            "deviant_dims": ["avg_recv (+4.2σ)", "out_degree (+3.8σ)"],
+            "zscore_score": 0.88,
+            "mahalanobis_score": 0.12,
+            "income_score": 0.95,
+            "drift_score": 0.05,
+            "gnn_prob": 0.89,
+            "gnn_boosted": True,
+            "tx_count_out": 45,
+            "tx_count_in": 3,
+            "avg_amount_sent": 1200.50,
+            "avg_amount_recv": 50000.00,
+            "out_degree": 38,
+            "in_degree": 2,
+            "active_days": 14,
+            "estimated_monthly_income": 8500.00
+        },
+        {
+            "account_id": "ACCT_KYC_002",
+            "composite_score": 0.7842,
+            "risk_level": "HIGH",
+            "peer_group": 1,
+            "peer_group_name": "High Inbound Tx",
+            "triggers": ["mahalanobis", "temporal_drift"],
+            "n_triggers": 2,
+            "deviant_dims": [],
+            "zscore_score": 0.05,
+            "mahalanobis_score": 0.85,
+            "income_score": 0.20,
+            "drift_score": 0.76,
+            "gnn_prob": 0.35,
+            "gnn_boosted": False,
+            "tx_count_out": 12,
+            "tx_count_in": 15,
+            "avg_amount_sent": 8500.00,
+            "avg_amount_recv": 8400.00,
+            "out_degree": 5,
+            "in_degree": 4,
+            "active_days": 45,
+            "estimated_monthly_income": 12000.00
+        },
+        {
+            "account_id": "ACCT_KYC_003",
+            "composite_score": 0.6512,
+            "risk_level": "HIGH",
+            "peer_group": 4,
+            "peer_group_name": "High Fan-Out",
+            "triggers": ["income_mismatch", "gnn_agreement"],
+            "n_triggers": 2,
+            "deviant_dims": ["avg_recv (+3.1σ)"],
+            "zscore_score": 0.15,
+            "mahalanobis_score": 0.22,
+            "income_score": 0.82,
+            "drift_score": 0.10,
+            "gnn_prob": 0.65,
+            "gnn_boosted": True,
+            "tx_count_out": 22,
+            "tx_count_in": 1,
+            "avg_amount_sent": 450.00,
+            "avg_amount_recv": 12000.00,
+            "out_degree": 18,
+            "in_degree": 1,
+            "active_days": 5,
+            "estimated_monthly_income": 3500.00
+        },
+        {
+            "account_id": "ACCT_KYC_004",
+            "composite_score": 0.4501,
+            "risk_level": "MEDIUM",
+            "peer_group": 2,
+            "peer_group_name": "High-Value Sender",
+            "triggers": ["multi_dim_zscore"],
+            "n_triggers": 1,
+            "deviant_dims": ["tx_out (+2.6σ)", "avg_sent (+2.9σ)"],
+            "zscore_score": 0.65,
+            "mahalanobis_score": 0.30,
+            "income_score": 0.15,
+            "drift_score": 0.20,
+            "gnn_prob": 0.22,
+            "gnn_boosted": False,
+            "tx_count_out": 8,
+            "tx_count_in": 8,
+            "avg_amount_sent": 2100.00,
+            "avg_amount_recv": 2150.00,
+            "out_degree": 3,
+            "in_degree": 3,
+            "active_days": 120,
+            "estimated_monthly_income": 4500.00
+        }
+    ]
+
+    return mock_data[:limit]
+
+
 # ================================================
 # MODULE SELF-TEST
 # Run directly:  python -m graph.graph_queries
