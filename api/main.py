@@ -33,6 +33,7 @@ from graph.graph_queries import (
     detect_structuring_patterns,
     detect_dormant_accounts,
     get_kyc_mismatches,
+    get_account_timeline,
 )
 from ml.evidence import (
     generate_evidence,
@@ -472,4 +473,21 @@ def get_kyc_mismatches_endpoint(
         raise HTTPException(
             status_code=500,
             detail=f"KYC Mismatch retrieval failed: {exc}",
+        )
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 6. ACCOUNT TIMELINE (TASK 20)
+# ────────────────────────────────────────────────────────────────────────────────
+@app.get("/api/account/{account_id}/timeline", tags=["Accounts"])
+def get_account_timeline_endpoint(account_id: str) -> list[dict[str, Any]]:
+    """
+    Returns the full transaction history for an account as a timeline.
+    """
+    try:
+        return get_account_timeline(account_id)
+    except Exception as exc:
+        logger.error("Error in /api/account/{account_id}/timeline: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Account timeline retrieval failed: {exc}",
         )

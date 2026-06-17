@@ -162,7 +162,7 @@ function GraphLegend() {
 
 // ─── main component ───────────────────────────────────────────────────────────
 
-export default function RingGraph() {
+export default function RingGraph({ onNodeSelect }) {
   const [graph, setGraph] = useState({ nodes: [], links: [] });
   const [skip, setSkip] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -242,7 +242,10 @@ export default function RingGraph() {
         nodeVal={node => node.is_mastermind ? 28 : Math.max((node.fraud_prob ?? 0) * 18, 8)}
         
         onNodeHover={node => setHoveredNode(node ?? null)}
-        onNodeClick={node => setSelectedNode(prev => prev?.id === node.id ? null : node)}
+        onNodeClick={node => {
+          setSelectedNode(prev => prev?.id === node.id ? null : node);
+          if (onNodeSelect && node) onNodeSelect(node);
+        }}
         
         // Link lines styling (thick and highly visible)
         linkColor={link => link.is_laundering ? "rgba(253, 98, 94, 0.75)" : "rgba(148, 163, 184, 0.6)"}

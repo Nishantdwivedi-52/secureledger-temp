@@ -445,6 +445,62 @@ def get_recent_transactions(account_id: str, limit: int = 20) -> list[dict]:
 
 
 # ================================================
+# ACCOUNT TIMELINE (TASK 20)
+# ================================================
+
+def get_account_timeline(account_id: str) -> list[dict]:
+    """
+    Returns the full transaction history for an account as a timeline.
+    Computes 'point_color' based on severity:
+      - red if gnn_fraud_prob > 0.5
+      - amber if anomaly_score > 0.7
+      - green otherwise
+    """
+    query = """
+    MATCH (a:Account {id: $account_id})-[t:TRANSACTION]-(other:Account)
+    WITH a, t, other,
+         CASE WHEN startNode(t) = a THEN "OUT" ELSE "IN" END AS direction
+    RETURN
+        t.timestamp      AS timestamp,
+        t.amount_paid    AS amount,
+        direction,
+        other.id         AS counterparty,
+        t.payment_format AS channel,
+        coalesce(a.anomaly_score, 0.0) AS anomaly_score,
+        coalesce(a.fraud_prob, 0.0)    AS gnn_fraud_prob
+    ORDER BY t.timestamp ASC
+    """
+    try:
+        with _session() as session:
+            result = session.run(query, account_id=account_id)
+            timeline = []
+            for r in result:
+                anomaly = _safe_float(r["anomaly_score"])
+                gnn = _safe_float(r["gnn_fraud_prob"])
+                
+                # Compute colour coding per Task 20 logic
+                color = "green"
+                if gnn > 0.5:
+                    color = "red"
+                elif anomaly > 0.7:
+                    color = "amber"
+
+                timeline.append({
+                    "timestamp":      str(r["timestamp"] or ""),
+                    "amount":         _safe_float(r["amount"]),
+                    "direction":      r["direction"],
+                    "counterparty":   r["counterparty"],
+                    "channel":        r["channel"] or "UNKNOWN",
+                    "anomaly_score":  anomaly,
+                    "gnn_fraud_prob": gnn,
+                    "point_color":    color
+                })
+            return timeline
+    except RuntimeError as exc:
+        logger.error("get_account_timeline(%s) failed: %s", account_id, exc)
+        return []
+
+# ================================================
 # SUBGRAPH VISUALISATION
 # FIX: old query used MATCH path = (a)-[:TX*1..2]-(b)
 #      with LIMIT 50 on *paths*, which is extremely

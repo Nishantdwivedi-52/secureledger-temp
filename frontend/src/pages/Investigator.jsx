@@ -13,6 +13,7 @@ import LiveAlertBanner     from "../components/LiveAlertBanner";
 import ExplainabilityPanel from "../components/ExplainabilityPanel";
 import Navbar              from "../components/Navbar";
 import FundFlowTracer      from "../components/FundFlowTracer";
+import AccountTimeline     from "../components/AccountTimeline";
 
 // ─── small helpers ─────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ export default function Investigator() {
   const [activeRingId,setActiveRingId]= useState(null);
   const [explainTarget, setExplainTarget] = useState(null);
   const [flowAccount, setFlowAccount] = useState(null);
+  const [selectedAccountId, setSelectedAccountId] = useState(null);
 
   // ── API calls ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -150,7 +152,7 @@ export default function Investigator() {
                   return (
                     <tr 
                       key={idx} 
-                      onClick={() => { setExplainTarget(m); setFlowAccount(m.id); }} 
+                      onClick={() => { setExplainTarget(m); setFlowAccount(m.id); setSelectedAccountId(m.id); }} 
                       style={{ cursor: "pointer", borderBottom: "1px solid #E2E8F0", transition: "background 0.2s" }}
                       onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}
@@ -202,7 +204,7 @@ export default function Investigator() {
             <div style={{ width: 20, height: 20, background: "#8B5CF6", borderRadius: 4 }} />
             <h2 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", margin: 0 }}>Fraud Ring Network</h2>
           </div>
-          <RingGraph />
+          <RingGraph onNodeSelect={(node) => setSelectedAccountId(node.id)} />
         </div>
 
         {/* Fund Flow Tracer Section */}
@@ -233,6 +235,10 @@ export default function Investigator() {
 
       {explainTarget && (
         <ExplainabilityPanel mastermind={explainTarget} onClose={() => setExplainTarget(null)} />
+      )}
+
+      {selectedAccountId && (
+        <AccountTimeline accountId={selectedAccountId} onClose={() => setSelectedAccountId(null)} />
       )}
     </div>
   );

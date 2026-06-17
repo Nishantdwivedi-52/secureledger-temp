@@ -9,6 +9,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
 import Navbar from "../components/Navbar";
+import AccountTimeline from "../components/AccountTimeline";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -141,6 +142,7 @@ export default function FraudRings() {
   const [expandedId, setExpandedId] = useState(null);
   const [search,     setSearch]     = useState("");
   const [sortBy,     setSortBy]     = useState("size");
+  const [selectedAccountId, setSelectedAccountId] = useState(null);
 
   // ── fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -396,7 +398,12 @@ export default function FraudRings() {
                     {/* Mastermind */}
                     <div>
                       <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, letterSpacing: "0.05em", marginBottom: 6 }}>MASTERMIND ID</div>
-                      <div style={{ fontFamily: "monospace", color: "#0F172A", fontSize: 14, fontWeight: 500 }}>
+                      <div 
+                        onClick={(e) => { e.stopPropagation(); setSelectedAccountId(ring.id); }}
+                        style={{ fontFamily: "monospace", color: "#01B8AA", fontSize: 14, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+                        onMouseEnter={e => e.currentTarget.style.color = "#0EA5E9"}
+                        onMouseLeave={e => e.currentTarget.style.color = "#01B8AA"}
+                      >
                         {(ring.id || "—").slice(0, 16)}…
                       </div>
                     </div>
@@ -483,6 +490,10 @@ export default function FraudRings() {
           opacity: 1;
         }
       `}</style>
+
+      {selectedAccountId && (
+        <AccountTimeline accountId={selectedAccountId} onClose={() => setSelectedAccountId(null)} />
+      )}
     </div>
   );
 }
