@@ -71,9 +71,9 @@ CFG = {
     # Sub-detector thresholds
     "zscore_sigma":         2.5,  # Z-score deviation threshold
     "zscore_min_dims":      2,    # must deviate on ≥ this many dims
-    "mahal_percentile":     95,   # flag top 5% Mahalanobis distances
-    "income_multiplier":    2.0,  # monthly volume > 2× estimated cap
-    "drift_percentile":     90,   # flag top 10% temporal drifters
+    "mahal_percentile":     99,   # flag top 1% Mahalanobis distances
+    "income_multiplier":    10.0, # monthly volume > 10× peer median
+    "drift_threshold":      0.3,  # absolute cosine distance > 0.3
     "gnn_boost_threshold":  0.5,  # GNN prob above this triggers boost
     "gnn_boost_weight":     0.15, # how much GNN agreement boosts score
 
@@ -432,8 +432,8 @@ class KYCBehaviourMismatchDetector:
                     scores[idx] = min(1.0, (ratio - multiplier) / multiplier)
 
         logger.info(
-            "Sub-detector 3 (Income): %d accounts exceeding 2× peer median",
-            np.sum(scores > 0),
+            "Sub-detector 3 (Income): %d accounts exceeding %dx peer median",
+            np.sum(scores > 0), int(multiplier)
         )
         return scores
 
@@ -472,14 +472,14 @@ class KYCBehaviourMismatchDetector:
 
             scores[i] = max(0.0, cosine_dist * 0.6 + asymmetry * 0.4)
 
-        # Normalise using percentile
-        if scores.max() > 0:
-            threshold = np.percentile(scores, CFG["drift_percentile"])
-            scores = np.clip(scores / (threshold + 1e-8), 0.0, 1.0)
+        # Absolute threshold instead of percentile ranking
+        threshold = CFG.get("drift_threshold", 0.3)
+        # Only keep scores above absolute threshold, map remainder to (0, 1]
+        scores = np.where(scores > threshold, np.clip((scores - threshold) / (1.0 - threshold), 0.0, 1.0), 0.0)
 
         logger.info(
-            "Sub-detector 4 (Temporal drift): %d accounts above 90th pctl",
-            np.sum(scores > 0.5),
+            "Sub-detector 4 (Temporal drift): %d accounts with absolute drift > %.2f",
+            np.sum(scores > 0), threshold
         )
         return scores
 
@@ -496,7 +496,8 @@ class KYCBehaviourMismatchDetector:
         boost_weight = CFG["gnn_boost_weight"]
 
         gnn_agreement = self.gnn_probs >= boost_threshold
-        behaviour_flagged = composite > 0.0
+        # Only boost accounts that ALREADY passed the flag threshold
+        behaviour_flagged = composite >= CFG["flag_threshold"]
 
         # Where both signals agree, boost the score
         both = gnn_agreement & behaviour_flagged
