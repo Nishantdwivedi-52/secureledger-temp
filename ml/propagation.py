@@ -8,7 +8,7 @@ URI = "bolt://localhost:7687"
 
 AUTH = (
     "neo4j",
-    "secureledger123"
+    "test1234"
 )
 
 driver = GraphDatabase.driver(

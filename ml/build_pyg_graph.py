@@ -4,7 +4,7 @@ from torch_geometric.data import Data
 from neo4j import GraphDatabase
 
 URI = "bolt://localhost:7687"
-AUTH = ("neo4j", "secureledger123")
+AUTH = ("neo4j", "test1234")
 
 driver = GraphDatabase.driver(
     URI,

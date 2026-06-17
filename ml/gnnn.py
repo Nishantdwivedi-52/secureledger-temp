@@ -82,7 +82,7 @@ CFG = {
     # Neo4j
     "neo4j_uri":      os.getenv("NEO4J_URI",      "bolt://localhost:7687"),
     "neo4j_user":     os.getenv("NEO4J_USERNAME",  "neo4j"),
-    "neo4j_password": os.getenv("NEO4J_PASSWORD",  "secureledger123"),
+    "neo4j_password": os.getenv("NEO4J_PASSWORD",  "test1234"),
 
     # Model architecture
     "hidden_channels": 256,
@@ -150,7 +150,7 @@ def load_fraud_ids(driver) -> set:
 
 def load_rich_features(driver, id2idx: dict) -> np.ndarray:
     """
-    Pull 7 hand-crafted features per account from Neo4j:
+    Pull 7 hand-crafted features per account:
       0  tx_count_out          — total outbound transactions
       1  tx_count_in           — total inbound transactions
       2  avg_amount_sent       — mean outbound amount
@@ -177,34 +177,40 @@ def load_rich_features(driver, id2idx: dict) -> np.ndarray:
     #   count(CASE WHEN out.is_laundering = 1 THEN 1 END) AS fraud_out
     #   ... THEN toFloat(fraud_out + fraud_in) / (tx_out + tx_in) ... AS fraud_ratio
     # That directly encodes the label as a feature — a textbook data leak.
+
     query = """
     MATCH (a:Account)
-    OPTIONAL MATCH (a)-[out:TRANSACTION]->()
+    OPTIONAL MATCH (a)-[t:TRANSACTION]-(other)
+
     WITH a,
-         count(out)                                               AS tx_out,
-         coalesce(avg(out.amount_paid), 0)                       AS avg_sent,
-         count(DISTINCT out.__endNode)                           AS out_deg
-    OPTIONAL MATCH (a)<-[inn:TRANSACTION]-()
-    WITH a, tx_out, avg_sent, out_deg,
-         count(inn)                                              AS tx_in,
-         coalesce(avg(inn.amount_paid), 0)                       AS avg_recv,
-         count(DISTINCT inn.__startNode)                         AS in_deg
-    OPTIONAL MATCH (a)-[t2:TRANSACTION]-()
-    WITH a, tx_out, avg_sent, out_deg,
-             tx_in,  avg_recv,  in_deg,
-         min(t2.timestamp) AS first_ts,
-         max(t2.timestamp) AS last_ts
+         count(CASE WHEN startNode(t) = a THEN t END) AS tx_count_out,
+         coalesce(avg(CASE WHEN startNode(t) = a THEN t.amount_paid END), 0.0) AS avg_amount_sent,
+         count(DISTINCT CASE WHEN startNode(t) = a THEN other END) AS out_degree,
+
+         count(CASE WHEN endNode(t) = a THEN t END) AS tx_count_in,
+         coalesce(avg(CASE WHEN endNode(t) = a THEN t.amount_paid END), 0.0) AS avg_amount_received,
+         count(DISTINCT CASE WHEN endNode(t) = a THEN other END) AS in_degree,
+
+         min(t.timestamp) AS first_ts,
+         max(t.timestamp) AS last_ts
+
     RETURN
-        a.id          AS id,
-        tx_out        AS tx_count_out,
-        tx_in         AS tx_count_in,
-        avg_sent      AS avg_amount_sent,
-        avg_recv      AS avg_amount_received,
-        out_deg       AS out_degree,
-        in_deg        AS in_degree,
-        CASE WHEN first_ts IS NOT NULL AND last_ts IS NOT NULL
-             THEN (toFloat(last_ts) - toFloat(first_ts)) / 86400.0
-             ELSE 0.0 END AS active_days
+        a.id AS id,
+        tx_count_out,
+        tx_count_in,
+        avg_amount_sent,
+        avg_amount_received,
+        out_degree,
+        in_degree,
+
+        CASE
+            WHEN first_ts IS NOT NULL AND last_ts IS NOT NULL
+            THEN duration.between(
+                     datetime(replace(first_ts, ' ', 'T')),
+                     datetime(replace(last_ts, ' ', 'T'))
+                 ).days
+            ELSE 0
+        END AS active_days
     """
 
     n = len(id2idx)
@@ -216,22 +222,28 @@ def load_rich_features(driver, id2idx: dict) -> np.ndarray:
     found = 0
     for row in results:
         acc_id = row["id"]
+
         if acc_id not in id2idx:
             continue
+
         idx = id2idx[acc_id]
+
         features[idx] = [
-            float(row["tx_count_out"]        or 0),
-            float(row["tx_count_in"]         or 0),
-            float(row["avg_amount_sent"]      or 0),
-            float(row["avg_amount_received"]  or 0),
-            float(row["out_degree"]           or 0),
-            float(row["in_degree"]            or 0),
-            float(row["active_days"]          or 0),
+            float(row["tx_count_out"] or 0),
+            float(row["tx_count_in"] or 0),
+            float(row["avg_amount_sent"] or 0),
+            float(row["avg_amount_received"] or 0),
+            float(row["out_degree"] or 0),
+            float(row["in_degree"] or 0),
+            float(row["active_days"] or 0),
         ]
+
         found += 1
 
     logger.info("Rich features loaded for %d / %d accounts.", found, n)
-    # Return raw (un-normalised) features. Normalisation happens in main() after split.
+
+    # Return raw (un-normalised) features.
+    # Normalisation happens in main() after split.
     return features
 
 

@@ -19,7 +19,7 @@ def compute_anomaly_scores(embeddings_path='ml/embeddings.npy'):
     return scores
 
 def write_scores_to_neo4j(scores, data):
-    driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j','secureledger123'))
+    driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j','test1234'))
     idx2id = {v: k for k, v in data.id2idx.items()}
     batch = [{'id': idx2id[i], 'score': float(scores[i])} for i in range(len(scores))]
 

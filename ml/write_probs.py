@@ -38,7 +38,7 @@ with torch.no_grad():
     probabilities = torch.softmax(logits, dim=1)[:, 1].numpy()
 
 print("\n=== WRITING SCORES TO NEO4J DATABASE ===")
-driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "secureledger123"))
+driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "test1234"))
 idx2id = {v: k for k, v in data.id2idx.items()}
 batch = [{"id": idx2id[i], "prob": float(probabilities[i])} for i in range(len(probabilities))]
 

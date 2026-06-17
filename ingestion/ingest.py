@@ -6,7 +6,7 @@ from ingestion.hash_utils import hash_id
 import time
 
 URI  = 'bolt://127.0.0.1:7687'
-AUTH = ('neo4j', 'secureledger123')
+AUTH = ('neo4j', 'test1234')
 
 
 def get_driver():

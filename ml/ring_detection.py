@@ -19,7 +19,7 @@ print("LOADED UPDATED RING DETECTION FILE")
 
 URI = "bolt://localhost:7687"
 USERNAME = "neo4j"
-PASSWORD = "secureledger123"
+PASSWORD = "test1234"
 
 driver = GraphDatabase.driver(
     URI,

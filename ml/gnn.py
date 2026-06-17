@@ -45,7 +45,7 @@ print(f"Embedding Shape : {embeddings.shape}")
 
 driver = GraphDatabase.driver(
     "bolt://localhost:7687",
-    auth=("neo4j", "secureledger123")
+    auth=("neo4j", "test1234")
 )
 
 # ------------------------------------------------
