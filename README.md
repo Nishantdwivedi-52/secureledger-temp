@@ -1,8 +1,19 @@
 # SecureLedger
 ### Graph Intelligence Platform for Tracking Fund Flows and Detecting Financial Fraud
 
-> **PSBs Hackathon Series 2026 · IDEA 2.0 · Union Bank of India**  
-> K J Somaiya School of Engineering
+SecureLedger is an AI-powered Anti-Money Laundering (AML) platform that models financial transactions as a graph to detect coordinated fraud networks instead of isolated suspicious transactions.
+
+Built using Neo4j, GraphSAGE, Node2Vec, and Isolation Forest, it detects fraud rings, mule accounts, circular money flows, and generates investigator-ready reports through an interactive dashboard.
+
+> Originally developed for the PSBs Hackathon Series 2026 (Union Bank of India) and later expanded into a full graph-based AML intelligence platform.
+
+## Highlights
+
+- Graph-based AML platform built on Neo4j
+- GraphSAGE + Node2Vec + Isolation Forest ensemble
+- Detects fraud rings, mule networks, and circular laundering patterns
+- Real-time dashboard with WebSocket alerts
+- Automatic STR report generation
 
 ---
 
@@ -329,7 +340,7 @@ Severe class imbalance handled via **Graph-SMOTE** — 5× synthetic fraud nodes
 | Name | Contribution |
 |---|---|
 | Poonam Gupta | ML model development, GNN pipeline |
-| Sahaj Bindal | Data pipeline, graph ingestion |
+| Sahaj Bindal | Data pipeline, graph ingestion, ML model development, GNN pipeline |
 | Nishant Kumar | Backend API, WebSocket integration |
 | Shambhavi Singh | Frontend dashboard, documentation |
 
